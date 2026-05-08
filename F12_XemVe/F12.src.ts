@@ -52,7 +52,29 @@ export function filterTickets(tickets: any[], input: { status?: string; text?: s
 export class GetTicketUseCase {
   constructor(private orderRepo: IOrderRepository, private ticketRepo?: ITicketRepository) {}
 
+  async getTicketById(input: { userId: number; ticketId: number }) {
+    if (!this.ticketRepo?.findByPk) throw new ValidationError('Ticket repository chua duoc cau hinh');
+    const ticket = await this.ticketRepo.findByPk(input.ticketId);
+    if (!ticket) throw new NotFoundError('Ticket khong ton tai');
+    if (ticket.user_id !== input.userId) throw new ForbiddenError('Khong co quyen xem ve nay');
+
+    return {
+      id: ticket.id,
+      ticketCode: ticket.ticket_code ?? ticket.ticketCode,
+      status: ticket.status,
+      user: ticket.user ?? null,
+      tour: ticket.tour ?? null,
+      guide: ticket.guide ?? null,
+      validFrom: ticket.valid_from ?? null,
+      validUntil: ticket.valid_until ?? null,
+    };
+  }
+
   async execute(input: { userId: number; orderId: number }) {
+    if (this.ticketRepo?.findByPk) {
+      return this.getTicketById({ userId: input.userId, ticketId: input.orderId });
+    }
+
     const order = await this.orderRepo.findByPk(input.orderId);
     if (!order) throw new NotFoundError('Don hang khong ton tai');
     if (order.user_id !== input.userId) throw new ForbiddenError('Khong co quyen xem ve nay');

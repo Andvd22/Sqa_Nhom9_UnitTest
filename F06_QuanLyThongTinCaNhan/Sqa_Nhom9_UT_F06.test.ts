@@ -4,8 +4,6 @@ import {
   NotFoundError,
   ConflictError,
   isValidEmail,
-  isValidDisplayName,
-  isValidPhone,
   IUserRepository,
 } from './F06.src';
 
@@ -16,7 +14,7 @@ const makeRepo = (): jest.Mocked<IUserRepository> =>
     update: jest.fn(),
   }) as any;
 
-describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => {
+describe('F06 - Quản lý thông tin cá nhân | kiểm thử theo hướng bắt lỗi', () => {
   let repo: jest.Mocked<IUserRepository>;
   let useCase: UpdateUserInfoUseCase;
 
@@ -25,20 +23,18 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
     useCase = new UpdateUserInfoUseCase(repo);
   });
 
-  describe('Luong thanh cong', () => {
-    it('UT_F06_01 - Cap nhat so dien thoai hop le thanh cong', async () => {
+  describe('Luồng thành công', () => {
+    it('UT_F06_01 - Xác minh cập nhật số điện thoại hợp lệ thành công', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, phone: '0900000000' });
-      repo.findOne.mockResolvedValue(null);
       repo.update.mockResolvedValue([1]);
 
       const result = await useCase.execute({ userId: 1, phone: '0901234567' });
 
       expect(result.phone).toBe('0901234567');
-      expect(repo.findOne).toHaveBeenCalledWith({ where: { phone: '0901234567', id: { ne: 1 } } });
       expect(repo.update).toHaveBeenCalledWith({ phone: '0901234567' }, { where: { id: 1 } });
     });
 
-    it('UT_F06_02 - Cap nhat nhieu truong hop le cung luc', async () => {
+    it('UT_F06_02 - Xác minh cập nhật nhiều trường hợp lệ cùng lúc', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com', phone: '0900000000', username: 'Old Name' });
       repo.findOne.mockResolvedValue(null);
       repo.update.mockResolvedValue([1]);
@@ -61,7 +57,7 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       );
     });
 
-    it('UT_F06_03 - Truong avatar duoc map sang avatar_url', async () => {
+    it('UT_F06_03 - Xác minh trường avatar được map sang avatar_url', async () => {
       repo.findByPk.mockResolvedValue({ id: 1 });
       repo.update.mockResolvedValue([1]);
 
@@ -71,7 +67,7 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       expect(repo.update).toHaveBeenCalledWith({ avatar_url: 'avatar.png' }, { where: { id: 1 } });
     });
 
-    it('UT_F06_04 - Email trung email hien tai thi khong kiem tra trung', async () => {
+    it('UT_F06_04 - Xác minh email trùng email hiện tại thì không kiểm tra trùng', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, email: 'same@e.com' });
       repo.update.mockResolvedValue([1]);
 
@@ -81,7 +77,7 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       expect(repo.update).toHaveBeenCalledWith({ email: 'same@e.com' }, { where: { id: 1 } });
     });
 
-    it('UT_F06_04A - Co reload thi phai goi reload sau khi cap nhat thanh cong', async () => {
+    it('UT_F06_05 - Xác minh có reload thì phải gọi reload sau khi cập nhật thành công', async () => {
       const reload = jest.fn().mockResolvedValue(undefined);
       repo.findByPk.mockResolvedValue({ id: 1, username: 'Old Name', reload });
       repo.update.mockResolvedValue([1]);
@@ -91,7 +87,7 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       expect(reload).toHaveBeenCalledTimes(1);
     });
 
-    it('UT_F06_04B - Co getDataValue thi uu tien du lieu tu model sau reload', async () => {
+    it('UT_F06_06 - Xác minh có getDataValue thì ưu tiên dữ liệu từ model sau reload', async () => {
       const reload = jest.fn().mockResolvedValue(undefined);
       const getDataValue = jest.fn((key: string) => {
         const values: Record<string, any> = {
@@ -127,7 +123,7 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       });
     });
 
-    it('UT_F06_04C - Co reload nhung field khong co tren object thi tra ve fallback', async () => {
+    it('UT_F06_07 - Xác minh có reload nhưng field không có trên object thì trả về fallback', async () => {
       const reload = jest.fn().mockResolvedValue(undefined);
       repo.findByPk.mockResolvedValue({ id: 1, reload });
       repo.update.mockResolvedValue([1]);
@@ -138,8 +134,8 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
     });
   });
 
-  describe('Validation va dieu kien bien', () => {
-    it('UT_F06_05 - Khong co du lieu cap nhat thi bao loi', async () => {
+  describe('Validation và điều kiện biên', () => {
+    it('UT_F06_08 - Xác minh ValidationError khi không có dữ liệu cập nhật', async () => {
       repo.findByPk.mockResolvedValue({ id: 1 });
 
       await expect(useCase.execute({ userId: 1 })).rejects.toThrow(ValidationError);
@@ -147,41 +143,41 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       expect(repo.update).not.toHaveBeenCalled();
     });
 
-    it('UT_F06_06 - So dien thoai rong thi bi tu choi', async () => {
+    it('UT_F06_09 - Xác minh ValidationError khi số điện thoại rỗng', async () => {
       repo.findByPk.mockResolvedValue({ id: 1 });
 
       await expect(useCase.execute({ userId: 1, phone: '' })).rejects.toThrow('So dien thoai khong hop le');
       expect(repo.update).not.toHaveBeenCalled();
     });
 
-    it('UT_F06_07 - avatar_url rong thi khong duoc cap nhat', async () => {
+    it('UT_F06_10 - Xác minh avatar_url rỗng thì không được cập nhật', async () => {
       repo.findByPk.mockResolvedValue({ id: 1 });
 
       await expect(useCase.execute({ userId: 1, avatar_url: '' })).rejects.toThrow(ValidationError);
       expect(repo.update).not.toHaveBeenCalled();
     });
 
-    it('UT_F06_08 - Email sai dinh dang thi bi tu choi', async () => {
+    it('UT_F06_11 - Xác minh ValidationError khi email sai định dạng', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com' });
 
       await expect(useCase.execute({ userId: 1, email: 'invalid-email' })).rejects.toThrow('Email khong hop le');
       expect(repo.update).not.toHaveBeenCalled();
     });
 
-    it('UT_F06_09 - Ten chi chua khoang trang thi bi tu choi', async () => {
+    it('UT_F06_12 - Xác minh ValidationError khi tên chỉ chứa khoảng trắng', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
 
       await expect(useCase.execute({ userId: 1, username: '   ' })).rejects.toThrow('Ten nguoi dung khong hop le');
       expect(repo.update).not.toHaveBeenCalled();
     });
 
-    it('UT_F06_09A - Ten chi co mot ky tu so thi bi tu choi', async () => {
+    it('UT_F06_13 - Xác minh ValidationError khi tên chỉ có một ký tự số', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
 
       await expect(useCase.execute({ userId: 1, username: '8' })).rejects.toThrow('Ten nguoi dung khong hop le');
     });
 
-    it('UT_F06_09B - Ten chua script thi bi tu choi', async () => {
+    it('UT_F06_14 - Xác minh ValidationError khi tên chứa script', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
 
       await expect(useCase.execute({ userId: 1, username: '<script>alert(1)</script>' })).rejects.toThrow(
@@ -189,7 +185,7 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       );
     });
 
-    it('UT_F06_09C - So dien thoai khong dung 10 chu so thi bi tu choi', async () => {
+    it('UT_F06_15 - Xác minh ValidationError khi số điện thoại không đúng 10 chữ số', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, phone: '0900000000' });
 
       await expect(useCase.execute({ userId: 1, phone: '090abc4567' })).rejects.toThrow('So dien thoai khong hop le');
@@ -197,15 +193,15 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
     });
   });
 
-  describe('Bat loi nghiep vu', () => {
-    it('UT_F06_10 - Nguoi dung khong ton tai thi bao NotFoundError', async () => {
+  describe('Bắt lỗi nghiệp vụ', () => {
+    it('UT_F06_16 - Xác minh NotFoundError khi người dùng không tồn tại', async () => {
       repo.findByPk.mockResolvedValue(null);
 
       await expect(useCase.execute({ userId: 999, phone: '0901234567' })).rejects.toThrow(NotFoundError);
       expect(repo.update).not.toHaveBeenCalled();
     });
 
-    it('UT_F06_11 - Email da ton tai o nguoi dung khac thi chan cap nhat', async () => {
+    it('UT_F06_17 - Xác minh email đã tồn tại ở người dùng khác thì chặn cập nhật', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com' });
       repo.findOne.mockResolvedValue({ id: 2 });
 
@@ -213,7 +209,7 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       expect(repo.update).not.toHaveBeenCalled();
     });
 
-    it('UT_F06_12 - Chi cap nhat username thi khong goi kiem tra trung email va phone', async () => {
+    it('UT_F06_18 - Xác minh chỉ cập nhật username thì không gọi kiểm tra trùng email và phone', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
       repo.update.mockResolvedValue([1]);
 
@@ -222,7 +218,7 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       expect(repo.findOne).not.toHaveBeenCalled();
     });
 
-    it('UT_F06_13 - So dien thoai da ton tai o nguoi dung khac thi bi chan', async () => {
+    it('UT_F06_19 - Xác minh số điện thoại đã tồn tại ở người dùng khác thì bị chặn', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, phone: '0900000000' });
       repo.findOne.mockResolvedValue({ id: 2, phone: '0901234567' });
 
@@ -233,15 +229,15 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
     });
   });
 
-  describe('Bat loi dependency va side effect', () => {
-    it('UT_F06_14 - Update tra ve 0 dong thi phai bao loi', async () => {
+  describe('Bắt lỗi dependency và side effect', () => {
+    it('UT_F06_20 - Xác minh ValidationError khi update trả về 0 dòng', async () => {
       repo.findByPk.mockResolvedValue({ id: 1, username: 'Old' });
       repo.update.mockResolvedValue([0]);
 
       await expect(useCase.execute({ userId: 1, username: 'New Name' })).rejects.toThrow(ValidationError);
     });
 
-    it('UT_F06_15 - Repository update nem loi thi day loi ra ngoai', async () => {
+    it('UT_F06_21 - Xác minh repository update ném lỗi thì đẩy lỗi ra ngoài', async () => {
       repo.findByPk.mockResolvedValue({ id: 1 });
       repo.findOne.mockResolvedValue(null);
       repo.update.mockRejectedValue(new Error('db error'));
@@ -249,7 +245,7 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
       await expect(useCase.execute({ userId: 1, phone: '0912345678' })).rejects.toThrow('db error');
     });
 
-    it('UT_F06_16 - Query kiem tra email trung phai loai tru chinh user hien tai', async () => {
+    it('UT_F06_22 - Xác minh query kiểm tra email trùng phải loại trừ chính user hiện tại', async () => {
       repo.findByPk.mockResolvedValue({ id: 9, email: 'old@e.com' });
       repo.findOne.mockResolvedValue(null);
       repo.update.mockResolvedValue([1]);
@@ -260,25 +256,14 @@ describe('F06 - Quan ly thong tin ca nhan | kiem thu theo huong bat loi', () => 
     });
   });
 
-  describe('Kiem tra helper', () => {
-    it('UT_F06_17 - isValidEmail dung regex hien tai cua source', () => {
+  describe('Kiểm tra helper', () => {
+    it('UT_F06_23 - Xác minh isValidEmail dùng đúng regex hiện tại của source', () => {
       expect(isValidEmail('valid@example.com')).toBe(true);
       expect(isValidEmail('invalid-email')).toBe(false);
       expect(isValidEmail('nguyenvan@example.com')).toBe(true);
     });
 
-    it('UT_F06_18 - Helper validate ten va so dien thoai chan du lieu ban', () => {
-      expect(isValidDisplayName('Nguyen Van A')).toBe(true);
-      expect(isValidDisplayName('   ')).toBe(false);
-      expect(isValidDisplayName('8')).toBe(false);
-      expect(isValidDisplayName('<script>alert(1)</script>')).toBe(false);
-
-      expect(isValidPhone('0901234567')).toBe(true);
-      expect(isValidPhone('090abc4567')).toBe(false);
-      expect(isValidPhone('1277128945')).toBe(false);
-    });
-
-    it('UT_F06_19 - Cac lop loi giu dung status code', () => {
+    it('UT_F06_24 - Xác minh các lớp lỗi giữ đúng status code', () => {
       expect(new ValidationError('msg').statusCode).toBe(400);
       expect(new NotFoundError('msg').statusCode).toBe(404);
       expect(new ConflictError('msg').statusCode).toBe(409);

@@ -35,7 +35,7 @@ function makeGuideService(): jest.Mocked<IGuideService> {
   return { hasAvailableGuide: jest.fn() } as any;
 }
 
-describe('F10 - Dat tour theo bookingService that', () => {
+describe('F10 - Đặt tour theo bookingService', () => {
   let userRepo: jest.Mocked<IUserRepository>;
   let tourRepo: jest.Mocked<ITourRepository>;
   let orderRepo: jest.Mocked<IOrderRepository>;
@@ -61,7 +61,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     paymentService.createPayment.mockResolvedValue({ payUrl: 'https://momo.vn/pay/100' });
   });
 
-  it('UT_F10_01 - Dat tour thanh cong va tao payment voi amount sau tinh tien', async () => {
+  it('UT_F10_01 - Xác minh đặt tour thành công và tạo payment với amount sau tính tiền', async () => {
     const result = await uc.execute({ userId: 1, tourId: 10, quantity: 2, startDate: futureDate() });
 
     expect(result).toMatchObject({ orderId: 100, totalPrice: 4000000, status: 'pending' });
@@ -76,7 +76,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(paymentService.createPayment).toHaveBeenCalledWith({ order_id: 100, amount: 4000000 });
   });
 
-  it('UT_F10_02 - User khong ton tai thi khong tao order', async () => {
+  it('UT_F10_02 - Xác minh không tạo order khi người dùng không tồn tại', async () => {
     userRepo.findByPk.mockResolvedValue(null);
 
     await expect(
@@ -85,7 +85,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(orderRepo.create).not.toHaveBeenCalled();
   });
 
-  it('UT_F10_03 - Tour khong ton tai thi tra NotFoundError', async () => {
+  it('UT_F10_03 - Xác minh NotFoundError khi tour không tồn tại', async () => {
     tourRepo.findByPk.mockResolvedValue(null);
 
     await expect(
@@ -93,20 +93,20 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(NotFoundError);
   });
 
-  it('UT_F10_04 - Quantity bang 0 bi tu choi', async () => {
+  it('UT_F10_04 - Xác minh ValidationError khi quantity bằng 0', async () => {
     await expect(
       uc.execute({ userId: 1, tourId: 10, quantity: 0, startDate: futureDate() })
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_05 - Quantity thap phan bi tu choi vi so luong ve phai la so nguyen duong', async () => {
+  it('UT_F10_05 - Xác minh ValidationError khi quantity là số thập phân', async () => {
     await expect(
       uc.execute({ userId: 1, tourId: 10, quantity: 1.5, startDate: futureDate() })
     ).rejects.toThrow('So luong ve phai la so nguyen duong');
     expect(orderRepo.create).not.toHaveBeenCalled();
   });
 
-  it('UT_F10_06 - Ngay khoi hanh trong qua khu bi tu choi', async () => {
+  it('UT_F10_06 - Xác minh ValidationError khi ngày khởi hành trong quá khứ', async () => {
     const past = new Date();
     past.setDate(past.getDate() - 1);
 
@@ -115,7 +115,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_07 - Ngay khoi hanh cach dung 2 ngay duoc chap nhan', async () => {
+  it('UT_F10_07 - Xác minh ngày khởi hành cách đúng 2 ngày được chấp nhận', async () => {
     const date = new Date();
     date.setDate(date.getDate() + 2);
 
@@ -124,7 +124,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(result.orderId).toBe(100);
   });
 
-  it('UT_F10_08 - So ve vuot ghe con lai bi tu choi theo Order.sum', async () => {
+  it('UT_F10_08 - Xác minh ValidationError khi số vé vượt số ghế còn lại', async () => {
     orderRepo.sum.mockResolvedValue(25);
 
     await expect(
@@ -132,7 +132,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_09 - Tour het cho khi capacity tru sold bang 0', async () => {
+  it('UT_F10_09 - Xác minh ValidationError khi tour hết chỗ', async () => {
     orderRepo.sum.mockResolvedValue(30);
 
     await expect(
@@ -140,7 +140,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_10 - Tour paused van duoc dat neu repository tra ve tour theo source hien tai', async () => {
+  it('UT_F10_10 - Xác minh tour paused vẫn được đặt theo source hiện tại', async () => {
     tourRepo.findByPk.mockResolvedValue({ id: 10, price: 2000000, capacity: 30, status: 'paused' });
 
     const result = await uc.execute({ userId: 1, tourId: 10, quantity: 1, startDate: futureDate() });
@@ -148,7 +148,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(result.orderId).toBe(100);
   });
 
-  it('UT_F10_11 - Coupon percent khong duoc giam qua discount_limit', async () => {
+  it('UT_F10_11 - Xác minh coupon phần trăm không được giảm quá discount_limit', async () => {
     const couponRepo = makeCouponRepo();
     uc = new CreateOrderUseCase(userRepo, tourRepo, orderRepo, paymentService, couponRepo);
     couponRepo.findByPk.mockResolvedValue({
@@ -165,11 +165,11 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(paymentService.createPayment).toHaveBeenCalledWith({ order_id: 100, amount: 3985000 });
   });
 
-  it('UT_F10_12 - Coupon fixed khong lam tong tien am', () => {
+  it('UT_F10_12 - Xác minh coupon fixed không làm tổng tiền âm', () => {
     expect(calculateCouponTotal(100000, { discount_amount: 200000 })).toBe(0);
   });
 
-  it('UT_F10_13 - Coupon inactive bi tu choi', async () => {
+  it('UT_F10_13 - Xác minh ValidationError khi coupon inactive', async () => {
     const couponRepo = makeCouponRepo();
     uc = new CreateOrderUseCase(userRepo, tourRepo, orderRepo, paymentService, couponRepo);
     couponRepo.findByPk.mockResolvedValue({ id: 7, is_active: false });
@@ -179,7 +179,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_14 - Khong co huong dan vien thi bi tu choi', async () => {
+  it('UT_F10_14 - Xác minh ValidationError khi không có hướng dẫn viên', async () => {
     const guideService = makeGuideService();
     uc = new CreateOrderUseCase(userRepo, tourRepo, orderRepo, paymentService, undefined, guideService);
     guideService.hasAvailableGuide.mockResolvedValue(false);
@@ -189,7 +189,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_15 - Gia tri don hang duoi 10000 bi tu choi', async () => {
+  it('UT_F10_15 - Xác minh ValidationError khi giá trị đơn hàng dưới 10000', async () => {
     tourRepo.findByPk.mockResolvedValue({ id: 10, price: 5000, capacity: 30 });
 
     await expect(
@@ -197,7 +197,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_16 - Gia tri don hang tren 50000000 bi tu choi', async () => {
+  it('UT_F10_16 - Xác minh ValidationError khi giá trị đơn hàng trên 50000000', async () => {
     tourRepo.findByPk.mockResolvedValue({ id: 10, price: 51000000, capacity: 30 });
 
     await expect(
@@ -205,7 +205,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_17 - Dung gia tour moi nhat tu repository', async () => {
+  it('UT_F10_17 - Xác minh dùng giá tour mới nhất từ repository', async () => {
     tourRepo.findByPk.mockResolvedValue({ id: 10, price: 4000000, capacity: 30 });
 
     const result = await uc.execute({ userId: 1, tourId: 10, quantity: 1, startDate: futureDate() });
@@ -214,7 +214,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(orderRepo.create).toHaveBeenCalledWith(expect.objectContaining({ unit_price: 4000000 }));
   });
 
-  it('UT_F10_18 - Goi Order.sum voi cac status tinh ve da ban', async () => {
+  it('UT_F10_18 - Xác minh gọi Order.sum với các trạng thái tính vé đã bán', async () => {
     await uc.execute({ userId: 1, tourId: 10, quantity: 1, startDate: futureDate() });
 
     expect(orderRepo.sum).toHaveBeenCalledWith('quantity', expect.objectContaining({
@@ -222,7 +222,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     }));
   });
 
-  it('UT_F10_19 - Coupon het luot su dung bi tu choi', async () => {
+  it('UT_F10_19 - Xác minh ValidationError khi coupon hết lượt sử dụng', async () => {
     const couponRepo = makeCouponRepo();
     uc = new CreateOrderUseCase(userRepo, tourRepo, orderRepo, paymentService, couponRepo);
     couponRepo.findByPk.mockResolvedValue({ id: 7, is_active: true, max_use: 0 });
@@ -232,32 +232,32 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_20 - Ma loi ValidationError va NotFoundError dung', () => {
+  it('UT_F10_20 - Xác minh mã lỗi ValidationError và NotFoundError đúng', () => {
     expect(new ValidationError('x').statusCode).toBe(400);
     expect(new NotFoundError('x').statusCode).toBe(404);
   });
 
-  it('UT_F10_21 - TourId bang 0 bi tu choi truoc khi query user', async () => {
+  it('UT_F10_21 - Xác minh tourId bằng 0 bị từ chối trước khi query user', async () => {
     await expect(
       uc.execute({ userId: 1, tourId: 0, quantity: 1, startDate: futureDate() })
     ).rejects.toThrow(ValidationError);
     expect(userRepo.findByPk).not.toHaveBeenCalled();
   });
 
-  it('UT_F10_22 - UserId khong hop le bi tu choi truoc khi query DB', async () => {
+  it('UT_F10_22 - Xác minh userId không hợp lệ bị từ chối trước khi query DB', async () => {
     await expect(
       uc.execute({ userId: 0, tourId: 10, quantity: 1, startDate: futureDate() })
     ).rejects.toThrow(ValidationError);
     expect(userRepo.findByPk).not.toHaveBeenCalled();
   });
 
-  it('UT_F10_23 - Quantity NaN bi tu choi', async () => {
+  it('UT_F10_23 - Xác minh ValidationError khi quantity là NaN', async () => {
     await expect(
       uc.execute({ userId: 1, tourId: 10, quantity: Number.NaN, startDate: futureDate() })
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_24 - Coupon het han bi tu choi', async () => {
+  it('UT_F10_24 - Xác minh ValidationError khi coupon hết hạn', async () => {
     const couponRepo = makeCouponRepo();
     uc = new CreateOrderUseCase(userRepo, tourRepo, orderRepo, paymentService, couponRepo);
     const expired = new Date();
@@ -269,14 +269,14 @@ describe('F10 - Dat tour theo bookingService that', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_25 - CouponId co nhung khong cau hinh couponRepo thi bi bo qua nhu source mock', async () => {
+  it('UT_F10_25 - Xác minh couponId có nhưng không cấu hình couponRepo thì bị bỏ qua theo source hiện tại', async () => {
     const result = await uc.execute({ userId: 1, tourId: 10, quantity: 1, startDate: futureDate(), couponId: 99 });
 
     expect(result.totalPrice).toBe(2000000);
     expect(orderRepo.create).toHaveBeenCalledWith(expect.objectContaining({ coupon_id: 99 }));
   });
 
-  it('UT_F10_26 - Khong cau hinh paymentService van tao order thanh cong', async () => {
+  it('UT_F10_26 - Xác minh không cấu hình paymentService vẫn tạo order thành công', async () => {
     uc = new CreateOrderUseCase(userRepo, tourRepo, orderRepo);
 
     const result = await uc.execute({ userId: 1, tourId: 10, quantity: 1, startDate: futureDate() });
@@ -285,11 +285,11 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(orderRepo.create).toHaveBeenCalled();
   });
 
-  it('UT_F10_27 - Coupon percent duoc gioi han boi discount_limit neu co', () => {
+  it('UT_F10_27 - Xác minh coupon phần trăm được giới hạn bởi discount_limit nếu có', () => {
     expect(calculateCouponTotal(4000000, { discount_percent: 25, discount_limit: 500000 })).toBe(3500000);
   });
 
-  it('UT_F10_28 - Order.create loi thi payment khong duoc goi de tranh sai trang thai', async () => {
+  it('UT_F10_28 - Xác minh Order.create lỗi thì payment không được gọi', async () => {
     orderRepo.create.mockRejectedValue(new Error('create failed'));
 
     await expect(
@@ -298,20 +298,20 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(paymentService.createPayment).not.toHaveBeenCalled();
   });
 
-  it('UT_F10_29 - Quantity dang chu so hop le duoc convert va dat tour', async () => {
+  it('UT_F10_29 - Xác minh quantity dạng chuỗi số hợp lệ được convert và đặt tour', async () => {
     const result = await uc.execute({ userId: 1, tourId: 10, quantity: '2' as any, startDate: futureDate() });
 
     expect(result.totalPrice).toBe(4000000);
     expect(orderRepo.create).toHaveBeenCalledWith(expect.objectContaining({ quantity: 2 }));
   });
 
-  it('UT_F10_30 - Quantity am bi tu choi', async () => {
+  it('UT_F10_30 - Xác minh ValidationError khi quantity âm', async () => {
     await expect(
       uc.execute({ userId: 1, tourId: 10, quantity: -1, startDate: futureDate() })
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F10_31 - Tour inactive van duoc dat neu repository tra ve tour theo source hien tai', async () => {
+  it('UT_F10_31 - Xác minh tour inactive vẫn được đặt theo source hiện tại', async () => {
     tourRepo.findByPk.mockResolvedValue({ id: 10, price: 2000000, capacity: 30, status: 'inactive' });
 
     const result = await uc.execute({ userId: 1, tourId: 10, quantity: 1, startDate: futureDate() });
@@ -319,7 +319,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(result.orderId).toBe(100);
   });
 
-  it('UT_F10_32 - Co huong dan vien kha dung thi tiep tuc tao order', async () => {
+  it('UT_F10_32 - Xác minh có hướng dẫn viên khả dụng thì tiếp tục tạo order', async () => {
     const guideService = makeGuideService();
     uc = new CreateOrderUseCase(userRepo, tourRepo, orderRepo, paymentService, undefined, guideService);
     guideService.hasAvailableGuide.mockResolvedValue(true);
@@ -330,7 +330,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(guideService.hasAvailableGuide).toHaveBeenCalledWith(10);
   });
 
-  it('UT_F10_33 - Tour khong co start_date va cung khong truyen startDate thi bao loi', async () => {
+  it('UT_F10_33 - Xác minh ValidationError khi tour không có start_date và cũng không truyền startDate', async () => {
     tourRepo.findByPk.mockResolvedValue({ id: 10, price: 2000000, capacity: 30, start_date: null, end_date: null });
 
     await expect(
@@ -339,7 +339,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(orderRepo.create).not.toHaveBeenCalled();
   });
 
-  it('UT_F10_34 - Tour co start_date nhung thieu end_date thi bao loi', async () => {
+  it('UT_F10_34 - Xác minh ValidationError khi tour có start_date nhưng thiếu end_date', async () => {
     const date = new Date();
     date.setDate(date.getDate() + 5);
     tourRepo.findByPk.mockResolvedValue({ id: 10, price: 2000000, capacity: 30, start_date: date, end_date: null });
@@ -350,7 +350,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(orderRepo.create).not.toHaveBeenCalled();
   });
 
-  it('UT_F10_35 - Coupon is_active dang chuoi 1 van duoc xem la hop le', async () => {
+  it('UT_F10_35 - Xác minh coupon is_active dạng chuỗi 1 vẫn được xem là hợp lệ', async () => {
     const couponRepo = makeCouponRepo();
     uc = new CreateOrderUseCase(userRepo, tourRepo, orderRepo, paymentService, couponRepo);
     couponRepo.findByPk.mockResolvedValue({ id: 7, is_active: '1', discount_amount: 100000, max_use: 10 });
@@ -360,7 +360,7 @@ describe('F10 - Dat tour theo bookingService that', () => {
     expect(result.totalPrice).toBe(1900000);
   });
 
-  it('UT_F10_36 - So luong ve bang 0 tra dung thong diep so nguyen duong', async () => {
+  it('UT_F10_36 - Xác minh quantity bằng 0 trả đúng thông điệp số nguyên dương', async () => {
     await expect(
       uc.execute({ userId: 1, tourId: 10, quantity: 0, startDate: futureDate() })
     ).rejects.toThrow('So luong ve phai la so nguyen duong');

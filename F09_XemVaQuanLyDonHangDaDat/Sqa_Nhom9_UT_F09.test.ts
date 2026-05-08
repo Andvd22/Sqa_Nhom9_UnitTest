@@ -33,7 +33,7 @@ function makeTourRepo() {
   return { findByPk: jest.fn() } as any;
 }
 
-describe('F09 - Xem va quan ly don hang da dat', () => {
+describe('F09 - Xem và quản lý đơn hàng đã đặt', () => {
   let orderRepo: jest.Mocked<IOrderRepository>;
   let uc: GetUserOrdersUseCase;
 
@@ -42,7 +42,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     uc = new GetUserOrdersUseCase(orderRepo);
   });
 
-  it('UT_F09_01 - Lay danh sach don hang theo user_id', async () => {
+  it('UT_F09_01 - Xác minh lấy danh sách đơn hàng theo user_id', async () => {
     const rows = [{ id: 101, status: 'pending' }, { id: 102, status: 'confirmed' }];
     orderRepo.findAndCountAll.mockResolvedValue({ rows, count: 2 });
 
@@ -58,7 +58,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     }));
   });
 
-  it('UT_F09_02 - Dung page va limit mac dinh khi khong truyen', async () => {
+  it('UT_F09_02 - Xác minh dùng page và limit mặc định khi không truyền', async () => {
     orderRepo.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
 
     await uc.execute({ userId: 5 });
@@ -66,7 +66,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(orderRepo.findAndCountAll).toHaveBeenCalledWith(expect.objectContaining({ limit: 10, offset: 0 }));
   });
 
-  it('UT_F09_03 - Tinh offset dung khi page=3 limit=5', async () => {
+  it('UT_F09_03 - Xác minh tính offset đúng khi page = 3 và limit = 5', async () => {
     orderRepo.findAndCountAll.mockResolvedValue({ rows: [], count: 11 });
 
     const result = await uc.execute({ userId: 1, page: 3, limit: 5 });
@@ -75,7 +75,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(result.pagination.totalPages).toBe(3);
   });
 
-  it('UT_F09_04 - Lay chi tiet don hang thanh cong', async () => {
+  it('UT_F09_04 - Xác minh lấy chi tiết đơn hàng thành công', async () => {
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, status: 'pending' });
 
     const result = await uc.getOrderDetail({ userId: 1, orderId: 101 });
@@ -84,19 +84,19 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(orderRepo.findOne).toHaveBeenCalledWith({ where: { id: 101 } });
   });
 
-  it('UT_F09_05 - Don hang khong ton tai tra NotFoundError', async () => {
+  it('UT_F09_05 - Xác minh NotFoundError khi đơn hàng không tồn tại', async () => {
     orderRepo.findOne.mockResolvedValue(null);
 
     await expect(uc.getOrderDetail({ userId: 1, orderId: 999 })).rejects.toThrow(NotFoundError);
   });
 
-  it('UT_F09_06 - Khong duoc xem don hang cua user khac', async () => {
+  it('UT_F09_06 - Xác minh không được xem đơn hàng của người dùng khác', async () => {
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 2 });
 
     await expect(uc.getOrderDetail({ userId: 1, orderId: 101 })).rejects.toThrow(ForbiddenError);
   });
 
-  it('UT_F09_07 - Trang thai pending/confirmed/cancelled van duoc tra ve trong danh sach', async () => {
+  it('UT_F09_07 - Xác minh trạng thái pending, confirmed, cancelled vẫn được trả về trong danh sách', async () => {
     const rows = [{ status: 'pending' }, { status: 'confirmed' }, { status: 'cancelled' }];
     orderRepo.findAndCountAll.mockResolvedValue({ rows, count: rows.length });
 
@@ -105,7 +105,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(result.orders.map((order) => order.status)).toEqual(['pending', 'confirmed', 'cancelled']);
   });
 
-  it('UT_F09_08 - Review chi chap nhan order status completed theo source that', async () => {
+  it('UT_F09_08 - Xác minh chỉ cho review đơn hàng có trạng thái completed', async () => {
     const reviewUc = new ReviewTourUseCase(orderRepo, makeReviewRepo());
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'confirmed' });
 
@@ -114,7 +114,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F09_09 - Review noi dung khoang trang tao review khong co text theo unit contract', async () => {
+  it('UT_F09_09 - Xác minh ValidationError khi nội dung review chỉ có khoảng trắng', async () => {
     const reviewRepo = makeReviewRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo);
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
@@ -122,15 +122,11 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
 
     await expect(
       reviewUc.execute({ userId: 1, orderId: 101, tourId: 9, rating: 5, text: '   ' })
-    ).resolves.toEqual({ id: 501 });
-    expect(reviewRepo.create).toHaveBeenCalledWith({
-      user_id: 1,
-      tour_id: 9,
-      rating: 5,
-    });
+    ).rejects.toThrow(ValidationError);
+    expect(reviewRepo.create).not.toHaveBeenCalled();
   });
 
-  it('UT_F09_10 - Review hop le duoc trim text va danh dau order da review', async () => {
+  it('UT_F09_10 - Xác minh review hợp lệ được trim text và đánh dấu đơn đã review', async () => {
     const reviewRepo = makeReviewRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo);
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
@@ -142,19 +138,20 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(orderRepo.update).toHaveBeenCalledWith({ is_review: true }, { where: { id: 101 } });
   });
 
-  it('UT_F09_11 - File khong phai anh van duoc dua vao reviewImageRepo theo unit contract', async () => {
+  it('UT_F09_11 - Xác minh ValidationError khi file không phải ảnh', async () => {
     const reviewRepo = makeReviewRepo();
     const imageRepo = makeImageRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo, imageRepo);
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
     reviewRepo.create.mockResolvedValue({ id: 501 });
 
-    await reviewUc.execute({ userId: 1, orderId: 101, tourId: 9, rating: 5, text: 'Tot', images: ['review.pdf'] });
-
-    expect(imageRepo.bulkCreate).toHaveBeenCalledWith([{ review_id: 501, image_url: 'review.pdf' }]);
+    await expect(
+      reviewUc.execute({ userId: 1, orderId: 101, tourId: 9, rating: 5, text: 'Tot', images: ['review.pdf'] })
+    ).rejects.toThrow(ValidationError);
+    expect(imageRepo.bulkCreate).not.toHaveBeenCalled();
   });
 
-  it('UT_F09_12 - Khong cho review lai don hang da review', async () => {
+  it('UT_F09_12 - Xác minh không cho review lại đơn hàng đã review', async () => {
     const reviewUc = new ReviewTourUseCase(orderRepo, makeReviewRepo());
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: true });
 
@@ -163,7 +160,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F09_13 - Rating ngoai khoang 1 den 5 bi tu choi', async () => {
+  it('UT_F09_13 - Xác minh ValidationError khi rating ngoài khoảng từ 1 đến 5', async () => {
     const reviewUc = new ReviewTourUseCase(orderRepo, makeReviewRepo());
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
 
@@ -172,7 +169,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F09_14 - Review bi chan khi order khong thuoc tour', async () => {
+  it('UT_F09_14 - Xác minh review bị chặn khi order không thuộc tour', async () => {
     const reviewUc = new ReviewTourUseCase(orderRepo, makeReviewRepo());
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 8, status: 'completed', is_review: false });
 
@@ -181,7 +178,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F09_15 - Review voi comment thay vi text van duoc luu', async () => {
+  it('UT_F09_15 - Xác minh review với comment thay cho text vẫn được lưu', async () => {
     const reviewRepo = makeReviewRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo);
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
@@ -192,7 +189,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(reviewRepo.create).toHaveBeenCalledWith(expect.objectContaining({ user_id: 1, tour_id: 9, rating: 5, text: 'Rat tot' }));
   });
 
-  it('UT_F09_16 - Review bo qua image rong trong danh sach images', async () => {
+  it('UT_F09_16 - Xác minh review bỏ qua image rỗng trong danh sách images', async () => {
     const reviewRepo = makeReviewRepo();
     const imageRepo = makeImageRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo, imageRepo);
@@ -204,7 +201,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(imageRepo.bulkCreate).toHaveBeenCalledWith([{ review_id: 501, image_url: 'a.png' }]);
   });
 
-  it('UT_F09_17 - Review khong co imageRepo van thanh cong neu co images', async () => {
+  it('UT_F09_17 - Xác minh review không có imageRepo vẫn thành công nếu có images', async () => {
     const reviewRepo = makeReviewRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo);
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
@@ -215,7 +212,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).resolves.toEqual({ id: 501 });
   });
 
-  it('UT_F09_18 - Review order khong ton tai tra NotFoundError', async () => {
+  it('UT_F09_18 - Xác minh NotFoundError khi review order không tồn tại', async () => {
     const reviewUc = new ReviewTourUseCase(orderRepo, makeReviewRepo());
     orderRepo.findOne.mockResolvedValue(null);
 
@@ -224,7 +221,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(NotFoundError);
   });
 
-  it('UT_F09_19 - Review order cua user khac bi chan', async () => {
+  it('UT_F09_19 - Xác minh review order của người dùng khác bị chặn', async () => {
     const reviewUc = new ReviewTourUseCase(orderRepo, makeReviewRepo());
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 2, tour_id: 9, status: 'completed', is_review: false });
 
@@ -233,12 +230,12 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(ForbiddenError);
   });
 
-  it('UT_F09_20 - Ma loi dung cho ValidationError va NotFoundError', () => {
+  it('UT_F09_20 - Xác minh mã lỗi đúng cho ValidationError và NotFoundError', () => {
     expect(new ValidationError('x').statusCode).toBe(400);
     expect(new NotFoundError('x').statusCode).toBe(404);
   });
 
-  it('UT_F09_21 - Danh sach rong tinh totalPages bang 0', async () => {
+  it('UT_F09_21 - Xác minh danh sách rỗng thì totalPages bằng 0', async () => {
     orderRepo.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
 
     const result = await uc.execute({ userId: 1, limit: 10 });
@@ -246,7 +243,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(result.pagination.totalPages).toBe(0);
   });
 
-  it('UT_F09_22 - Page bang 0 dung default page 1 nhu source mock', async () => {
+  it('UT_F09_22 - Xác minh page bằng 0 dùng mặc định page 1 theo source hiện tại', async () => {
     orderRepo.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
 
     await uc.execute({ userId: 1, page: 0, limit: 5 });
@@ -254,7 +251,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(orderRepo.findAndCountAll).toHaveBeenCalledWith(expect.objectContaining({ offset: 0, limit: 5 }));
   });
 
-  it('UT_F09_23 - Limit bang 0 dung default limit 10', async () => {
+  it('UT_F09_23 - Xác minh limit bằng 0 dùng mặc định limit 10', async () => {
     orderRepo.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
 
     await uc.execute({ userId: 1, page: 2, limit: 0 });
@@ -262,7 +259,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(orderRepo.findAndCountAll).toHaveBeenCalledWith(expect.objectContaining({ offset: 10, limit: 10 }));
   });
 
-  it('UT_F09_24 - Review rating thap hon 1 bi tu choi', async () => {
+  it('UT_F09_24 - Xác minh ValidationError khi rating thấp hơn 1', async () => {
     const reviewUc = new ReviewTourUseCase(orderRepo, makeReviewRepo());
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
 
@@ -271,7 +268,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F09_25 - Review rating thap phan bi tu choi', async () => {
+  it('UT_F09_25 - Xác minh ValidationError khi rating là số thập phân', async () => {
     const reviewUc = new ReviewTourUseCase(orderRepo, makeReviewRepo());
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
 
@@ -280,7 +277,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F09_26 - Review khong co noi dung van tao duoc theo source hien tai', async () => {
+  it('UT_F09_26 - Xác minh ValidationError khi review không có nội dung', async () => {
     const reviewRepo = makeReviewRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo);
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
@@ -288,25 +285,24 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
 
     await expect(
       reviewUc.execute({ userId: 1, orderId: 101, tourId: 9, rating: 5 })
-    ).resolves.toEqual({ id: 501 });
+    ).rejects.toThrow(ValidationError);
+    expect(reviewRepo.create).not.toHaveBeenCalled();
   });
 
-  it('UT_F09_27 - File exe trong danh sach anh van duoc dua vao image repo theo source hien tai', async () => {
+  it('UT_F09_27 - Xác minh ValidationError khi có file .exe trong danh sách ảnh', async () => {
     const reviewRepo = makeReviewRepo();
     const imageRepo = makeImageRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo, imageRepo);
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
     reviewRepo.create.mockResolvedValue({ id: 501 });
 
-    await reviewUc.execute({ userId: 1, orderId: 101, tourId: 9, rating: 5, text: 'Tot', images: ['a.jpg', 'virus.exe'] });
-
-    expect(imageRepo.bulkCreate).toHaveBeenCalledWith([
-      { review_id: 501, image_url: 'a.jpg' },
-      { review_id: 501, image_url: 'virus.exe' },
-    ]);
+    await expect(
+      reviewUc.execute({ userId: 1, orderId: 101, tourId: 9, rating: 5, text: 'Tot', images: ['a.jpg', 'virus.exe'] })
+    ).rejects.toThrow(ValidationError);
+    expect(imageRepo.bulkCreate).not.toHaveBeenCalled();
   });
 
-  it('UT_F09_28 - Review co anh jpg hop le duoc luu image', async () => {
+  it('UT_F09_28 - Xác minh review có ảnh jpg hợp lệ được lưu image', async () => {
     const reviewRepo = makeReviewRepo();
     const imageRepo = makeImageRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo, imageRepo);
@@ -318,7 +314,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     expect(imageRepo.bulkCreate).toHaveBeenCalledWith([{ review_id: 501, image_url: 'a.jpg' }]);
   });
 
-  it('UT_F09_29 - Co cau hinh tourRepo nhung tour khong ton tai thi bao loi', async () => {
+  it('UT_F09_29 - Xác minh có cấu hình tourRepo nhưng tour không tồn tại thì báo lỗi', async () => {
     const reviewRepo = makeReviewRepo();
     const userRepo = makeUserRepo();
     const tourRepo = makeTourRepo();
@@ -330,7 +326,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(NotFoundError);
   });
 
-  it('UT_F09_30 - Co cau hinh userRepo nhung user khong ton tai thi bao loi', async () => {
+  it('UT_F09_30 - Xác minh có cấu hình userRepo nhưng user không tồn tại thì báo lỗi', async () => {
     const reviewRepo = makeReviewRepo();
     const userRepo = makeUserRepo();
     const tourRepo = makeTourRepo();
@@ -343,7 +339,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(NotFoundError);
   });
 
-  it('UT_F09_31 - update is_review tra ve 0 thi bao loi', async () => {
+  it('UT_F09_31 - Xác minh ValidationError khi update is_review trả về 0', async () => {
     const reviewRepo = makeReviewRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo);
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });
@@ -355,7 +351,7 @@ describe('F09 - Xem va quan ly don hang da dat', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F09_32 - update is_review tra ve so nguyen van duoc xem la thanh cong', async () => {
+  it('UT_F09_32 - Xác minh update is_review trả về số nguyên vẫn được xem là thành công', async () => {
     const reviewRepo = makeReviewRepo();
     const reviewUc = new ReviewTourUseCase(orderRepo, reviewRepo);
     orderRepo.findOne.mockResolvedValue({ id: 101, user_id: 1, tour_id: 9, status: 'completed', is_review: false });

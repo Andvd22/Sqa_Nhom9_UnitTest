@@ -21,7 +21,7 @@ function makeVoucherRepo(): jest.Mocked<IVoucherRepository> {
   return { findOne: jest.fn() } as any;
 }
 
-describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
+describe('F11 - Thanh toán theo PaymentPage/bookingService', () => {
   let orderRepo: jest.Mocked<IOrderRepository>;
   let gateway: jest.Mocked<IPaymentGateway>;
   let uc: PaymentUseCase;
@@ -33,7 +33,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     gateway.createPaymentLink.mockResolvedValue({ url: 'https://momo.vn/pay/abc' });
   });
 
-  it('UT_F11_01 - Tao link thanh toan voi amount bang total hien tai', async () => {
+  it('UT_F11_01 - Xác minh tạo link thanh toán với amount bằng total hiện tại', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, quantity: 1, is_paid: false });
 
     const result = await uc.createPayment({ orderId: 101 });
@@ -42,32 +42,32 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(gateway.createPaymentLink).toHaveBeenCalledWith(5000000, 101);
   });
 
-  it('UT_F11_02 - Order khong ton tai tra NotFoundError', async () => {
+  it('UT_F11_02 - Xác minh NotFoundError khi order không tồn tại', async () => {
     orderRepo.findByPk.mockResolvedValue(null);
 
     await expect(uc.createPayment({ orderId: 999 })).rejects.toThrow(NotFoundError);
     expect(gateway.createPaymentLink).not.toHaveBeenCalled();
   });
 
-  it('UT_F11_03 - Don hang da thanh toan bi tu choi', async () => {
+  it('UT_F11_03 - Xác minh đơn hàng đã thanh toán bị từ chối', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, is_paid: true });
 
     await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F11_04 - Gia tri duoi 10000 bi tu choi', async () => {
+  it('UT_F11_04 - Xác minh ValidationError khi giá trị dưới 10000', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000, quantity: 1, is_paid: false });
 
     await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F11_05 - Gia tri tren 50000000 bi tu choi', async () => {
+  it('UT_F11_05 - Xác minh ValidationError khi giá trị trên 50000000', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 51000000, quantity: 1, is_paid: false });
 
     await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F11_06 - Bien duoi 10000 duoc chap nhan', async () => {
+  it('UT_F11_06 - Xác minh biên dưới 10000 được chấp nhận', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 10000, quantity: 1, is_paid: false });
 
     const result = await uc.createPayment({ orderId: 101 });
@@ -75,7 +75,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(result.amount).toBe(10000);
   });
 
-  it('UT_F11_07 - Bien tren 50000000 duoc chap nhan', async () => {
+  it('UT_F11_07 - Xác minh biên trên 50000000 được chấp nhận', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 50000000, quantity: 1, is_paid: false });
 
     const result = await uc.createPayment({ orderId: 101 });
@@ -83,7 +83,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(result.amount).toBe(50000000);
   });
 
-  it('UT_F11_08 - Coupon percent khong duoc vuot discount_limit', () => {
+  it('UT_F11_08 - Xác minh coupon phần trăm không được vượt discount_limit', () => {
     const discount = calculateClientDiscount(7200000, {
       code: '1THANG5',
       discount_percent: 50,
@@ -94,19 +94,19 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(discount).toBe(15000);
   });
 
-  it('UT_F11_09 - Coupon fixed tra dung so tien giam', () => {
+  it('UT_F11_09 - Xác minh coupon fixed trả đúng số tiền giảm', () => {
     expect(calculateClientDiscount(2000000, { discount_amount: 100000, is_active: true })).toBe(100000);
   });
 
-  it('UT_F11_10 - Coupon inactive khong giam gia', () => {
+  it('UT_F11_10 - Xác minh coupon inactive không giảm giá', () => {
     expect(calculateClientDiscount(2000000, { discount_percent: 50, is_active: false })).toBe(0);
   });
 
-  it('UT_F11_11 - Tong tien client bang subtotal tru discount', () => {
+  it('UT_F11_11 - Xác minh tổng tiền client bằng subtotal trừ discount', () => {
     expect(calculateClientTotal(1800000, 4, 3600000)).toBe(3600000);
   });
 
-  it('UT_F11_12 - storedDiscount duoc giu nguyen neu khong tinh lai bang voucherCode', async () => {
+  it('UT_F11_12 - Xác minh storedDiscount được giữ nguyên nếu không tính lại bằng voucherCode', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 4, is_paid: false });
 
     const summary = await uc.calculateSummary({ orderId: 101, quantity: 1, storedDiscount: 3600000 });
@@ -116,7 +116,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(summary.total).toBe(0);
   });
 
-  it('UT_F11_13 - Khi apply coupon lai thi discount tinh theo quantity hien tai', async () => {
+  it('UT_F11_13 - Xác minh khi apply coupon lại thì discount tính theo quantity hiện tại', async () => {
     const voucherRepo = makeVoucherRepo();
     uc = new PaymentUseCase(orderRepo, gateway, voucherRepo);
     orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 4, is_paid: false });
@@ -128,7 +128,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(summary.total).toBe(1785000);
   });
 
-  it('UT_F11_14 - Amount gui sang gateway bang tong tien sau giam', async () => {
+  it('UT_F11_14 - Xác minh amount gửi sang gateway bằng tổng tiền sau giảm', async () => {
     const voucherRepo = makeVoucherRepo();
     uc = new PaymentUseCase(orderRepo, gateway, voucherRepo);
     orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 2, is_paid: false });
@@ -140,7 +140,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(result.amount).toBe(1800000);
   });
 
-  it('UT_F11_15 - verifyPayment tra isPaid va paidAt', async () => {
+  it('UT_F11_15 - Xác minh verifyPayment trả isPaid và paidAt', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, is_paid: true, paid_at: '2024-06-15T10:00:00Z' });
 
     const result = await uc.verifyPayment({ orderId: 101 });
@@ -148,7 +148,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(result).toEqual({ isPaid: true, paidAt: '2024-06-15T10:00:00Z' });
   });
 
-  it('UT_F11_16 - verifyPayment khong ghi DB', async () => {
+  it('UT_F11_16 - Xác minh verifyPayment không ghi DB', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, is_paid: false, paid_at: null });
 
     await uc.verifyPayment({ orderId: 101 });
@@ -156,7 +156,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(orderRepo.update).not.toHaveBeenCalled();
   });
 
-  it('UT_F11_17 - Don cancelled van tao link thanh toan theo source hien tai', async () => {
+  it('UT_F11_17 - Xác minh đơn cancelled vẫn tạo link thanh toán theo source hiện tại', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, quantity: 1, is_paid: false, status: 'cancelled' });
 
     const result = await uc.createPayment({ orderId: 101 });
@@ -164,30 +164,30 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(result.amount).toBe(5000000);
   });
 
-  it('UT_F11_18 - Quantity khong phai so nguyen bi tu choi khi tinh summary thanh toan', async () => {
+  it('UT_F11_18 - Xác minh ValidationError khi quantity không phải số nguyên', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 2, is_paid: false });
 
     await expect(uc.calculateSummary({ orderId: 101, quantity: 1.5 })).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F11_19 - verifyPayment order khong ton tai tra NotFoundError', async () => {
+  it('UT_F11_19 - Xác minh NotFoundError khi verifyPayment với order không tồn tại', async () => {
     orderRepo.findByPk.mockResolvedValue(null);
 
     await expect(uc.verifyPayment({ orderId: 999 })).rejects.toThrow(NotFoundError);
   });
 
-  it('UT_F11_20 - Ma loi ValidationError va NotFoundError dung', () => {
+  it('UT_F11_20 - Xác minh mã lỗi ValidationError và NotFoundError đúng', () => {
     expect(new ValidationError('x').statusCode).toBe(400);
     expect(new NotFoundError('x').statusCode).toBe(404);
   });
 
-  it('UT_F11_21 - Quantity bang 0 bi tu choi khi tinh summary', async () => {
+  it('UT_F11_21 - Xác minh ValidationError khi quantity bằng 0', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 2, is_paid: false });
 
     await expect(uc.calculateSummary({ orderId: 101, quantity: 0 })).rejects.toThrow(ValidationError);
   });
 
-  it('UT_F11_22 - Khi khong co unit_price thi lay gia tu tour.price', async () => {
+  it('UT_F11_22 - Xác minh khi không có unit_price thì lấy giá từ tour.price', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, tour: { price: 2500000 }, quantity: 2, is_paid: false });
 
     const summary = await uc.calculateSummary({ orderId: 101, quantity: 2 });
@@ -196,7 +196,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(summary.unitPrice).toBe(2500000);
   });
 
-  it('UT_F11_23 - Khi khong co unit_price va tour.price thi suy ra tu total_price chia quantity', async () => {
+  it('UT_F11_23 - Xác minh khi không có unit_price và tour.price thì suy ra từ total_price chia quantity', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 6000000, quantity: 3, is_paid: false });
 
     const summary = await uc.calculateSummary({ orderId: 101 });
@@ -205,7 +205,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(summary.subtotal).toBe(6000000);
   });
 
-  it('UT_F11_24 - Coupon khong ton tai thi discount bang 0', async () => {
+  it('UT_F11_24 - Xác minh coupon không tồn tại thì discount bằng 0', async () => {
     const voucherRepo = makeVoucherRepo();
     uc = new PaymentUseCase(orderRepo, gateway, voucherRepo);
     orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 1, is_paid: false });
@@ -217,18 +217,18 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(summary.total).toBe(1800000);
   });
 
-  it('UT_F11_25 - Fixed discount lon hon subtotal lam total ve 0 theo client', () => {
+  it('UT_F11_25 - Xác minh fixed discount lớn hơn subtotal làm total về 0', () => {
     expect(calculateClientTotal(100000, 1, 200000)).toBe(0);
   });
 
-  it('UT_F11_26 - Gateway loi thi createPayment day loi ra ngoai', async () => {
+  it('UT_F11_26 - Xác minh gateway lỗi thì createPayment đẩy lỗi ra ngoài', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, quantity: 1, is_paid: false });
     gateway.createPaymentLink.mockRejectedValue(new Error('gateway failed'));
 
     await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow('gateway failed');
   });
 
-  it('UT_F11_27 - Coupon het han khong duoc tinh giam gia', () => {
+  it('UT_F11_27 - Xác minh coupon hết hạn không được tính giảm giá', () => {
     const expired = new Date();
     expired.setDate(expired.getDate() - 1);
 
@@ -237,7 +237,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(discount).toBe(0);
   });
 
-  it('UT_F11_28 - Coupon fixed hop le duoc tru vao total', async () => {
+  it('UT_F11_28 - Xác minh coupon fixed hợp lệ được trừ vào total', async () => {
     const voucherRepo = makeVoucherRepo();
     uc = new PaymentUseCase(orderRepo, gateway, voucherRepo);
     orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1000000, quantity: 2, is_paid: false });
@@ -248,7 +248,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(result.amount).toBe(1900000);
   });
 
-  it('UT_F11_29 - Don hang pending chua thanh toan duoc tao link', async () => {
+  it('UT_F11_29 - Xác minh đơn hàng pending chưa thanh toán được tạo link', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 2000000, quantity: 1, is_paid: false, status: 'pending' });
 
     const result = await uc.createPayment({ orderId: 101 });
@@ -256,26 +256,26 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(result.paymentUrl).toMatch(/^https?:\/\//);
   });
 
-  it('UT_F11_30 - Tong tien sau giam bang 0 thi khong tao link thanh toan', async () => {
+  it('UT_F11_30 - Xác minh tổng tiền sau giảm bằng 0 thì không tạo link thanh toán', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 100000, quantity: 1, is_paid: false });
 
     await expect(uc.createPayment({ orderId: 101, storedDiscount: 100000 })).rejects.toThrow(ValidationError);
     expect(gateway.createPaymentLink).not.toHaveBeenCalled();
   });
 
-  it('UT_F11_31 - calculateClientDiscount khong co coupon thi tra ve 0', () => {
+  it('UT_F11_31 - Xác minh calculateClientDiscount không có coupon thì trả về 0', () => {
     expect(calculateClientDiscount(1000000)).toBe(0);
   });
 
-  it('UT_F11_32 - calculateClientDiscount coupon khong co truong giam gia thi tra ve 0', () => {
+  it('UT_F11_32 - Xác minh calculateClientDiscount với coupon không có trường giảm giá thì trả về 0', () => {
     expect(calculateClientDiscount(1000000, { is_active: true })).toBe(0);
   });
 
-  it('UT_F11_32A - calculateClientDiscount coupon inactive thi tra ve 0', () => {
+  it('UT_F11_33 - Xác minh calculateClientDiscount với coupon inactive thì trả về 0', () => {
     expect(calculateClientDiscount(1000000, { discount_percent: 50, is_active: false })).toBe(0);
   });
 
-  it('UT_F11_33 - calculateSummary khong co quantity tren input va order thi mac dinh bang 1', async () => {
+  it('UT_F11_34 - Xác minh calculateSummary mặc định quantity bằng 1 khi không có trên input và order', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 2500000, is_paid: false });
 
     const summary = await uc.calculateSummary({ orderId: 101 });
@@ -284,13 +284,13 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(summary.unitPrice).toBe(2500000);
   });
 
-  it('UT_F11_34 - updateOrderPaymentStatus bao loi khi don hang khong ton tai', async () => {
+  it('UT_F11_35 - Xác minh updateOrderPaymentStatus báo lỗi khi đơn hàng không tồn tại', async () => {
     orderRepo.findByPk.mockResolvedValue(null);
 
     await expect(uc.updateOrderPaymentStatus({ orderId: 999, isPaid: true })).rejects.toThrow(NotFoundError);
   });
 
-  it('UT_F11_35 - updateOrderPaymentStatus dung order.update va order.reload khi model co method', async () => {
+  it('UT_F11_36 - Xác minh updateOrderPaymentStatus dùng order.update và order.reload khi model có method', async () => {
     const update = jest.fn().mockResolvedValue(undefined);
     const reload = jest.fn().mockResolvedValue(undefined);
     const order = { id: 101, status: 'pending', payment_url: null, update, reload };
@@ -303,7 +303,7 @@ describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
     expect(result).toBe(order);
   });
 
-  it('UT_F11_36 - updateOrderPaymentStatus fallback qua repository.update khi order khong co method update', async () => {
+  it('UT_F11_37 - Xác minh updateOrderPaymentStatus fallback qua repository.update khi order không có method update', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, status: 'pending', payment_url: 'OLD' });
     orderRepo.update.mockResolvedValue([1]);
 

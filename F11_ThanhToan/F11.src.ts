@@ -45,6 +45,18 @@ export interface IVoucherRepository {
   findOne(options: any): Promise<any | null>;
 }
 
+export interface ITicketLifecycleService {
+  createTicketsForOrder?(order: IOrderRecord): Promise<any>;
+}
+
+export interface IGuideAssignmentService {
+  assignGuideForOrder?(order: IOrderRecord): Promise<any>;
+}
+
+export interface IEmailService {
+  sendPaymentConfirmation?(orderId: number): Promise<any>;
+}
+
 export function calculateClientDiscount(subtotal: number, coupon?: any): number {
   if (!coupon || coupon.is_active === false || coupon.active === false) return 0;
   if (coupon.discount_amount) return Number(coupon.discount_amount);
@@ -62,7 +74,10 @@ export class PaymentUseCase {
   constructor(
     private orderRepo: IOrderRepository,
     private gateway: IPaymentGateway,
-    private voucherRepo?: IVoucherRepository
+    private voucherRepo?: IVoucherRepository,
+    private ticketSvc?: ITicketLifecycleService,
+    private guideSvc?: IGuideAssignmentService,
+    private emailSvc?: IEmailService
   ) {}
 
   async calculateSummary(input: { orderId: number; quantity?: number; voucherCode?: string; storedDiscount?: number }) {
@@ -104,6 +119,7 @@ export class PaymentUseCase {
   async updateOrderPaymentStatus(input: { orderId: number; isPaid: boolean; momoTransId?: string }) {
     const order = await this.orderRepo.findByPk(input.orderId);
     if (!order) throw new NotFoundError('Don hang khong ton tai');
+    const wasPaid = !!order.is_paid;
 
     const nextData = {
       is_paid: input.isPaid,
@@ -114,10 +130,21 @@ export class PaymentUseCase {
     if (order.update) {
       await order.update(nextData);
       await order.reload?.();
+      if (input.isPaid && !wasPaid) {
+        await this.ticketSvc?.createTicketsForOrder?.(order);
+        await this.emailSvc?.sendPaymentConfirmation?.(input.orderId);
+        await this.guideSvc?.assignGuideForOrder?.(order);
+      }
       return order;
     }
 
     await this.orderRepo.update(nextData, { where: { id: input.orderId } });
-    return { ...order, ...nextData };
+    const mergedOrder = { ...order, ...nextData };
+    if (input.isPaid && !wasPaid) {
+      await this.ticketSvc?.createTicketsForOrder?.(mergedOrder);
+      await this.emailSvc?.sendPaymentConfirmation?.(input.orderId);
+      await this.guideSvc?.assignGuideForOrder?.(mergedOrder);
+    }
+    return mergedOrder;
   }
 }
