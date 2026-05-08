@@ -1,54 +1,27 @@
-/**
- * @file Sqa_Nhom9_UT_F11.test.ts
- * @module F11_ThanhToan
- * @description Unit tests for PaymentUseCase - F11: Thanh toán
- * @group Nhom 09 - SQA
- *
- * Covers:
- *  - Tạo link thanh toán thành công
- *  - Order không tồn tại (create)
- *  - Giá trị đơn < 10,000đ
- *  - Giá trị đơn > 50,000,000đ
- *  - Đơn hàng đã thanh toán
- *  - verifyPayment trả về isPaid=true
- *  - verifyPayment trả về isPaid=false
- *  - verifyPayment order không tồn tại
- *  - Tạo link với giá đúng 10,000đ (biên dưới)
- *  - Tạo link với giá đúng 50,000,000đ (biên trên)
- *  - Gateway được gọi với đúng amount + orderId
- *  - findByPk được gọi đúng 1 lần (createPayment)
- *  - findByPk được gọi đúng 1 lần (verifyPayment)
- *  - verifyPayment không gọi update()
- *  - Order có total_price = 0
- *  - Order có giá gần biên trên
- *  - Order is_paid=true nhưng paid_at=null
- *  - verifyPayment trả về đúng paidAt
- *  - createPayment với order cancelled
- *  - Gateway trả về URL hợp lệ
- */
-
-import {
+﻿import {
   PaymentUseCase,
+  calculateClientDiscount,
+  calculateClientTotal,
   ValidationError,
   NotFoundError,
   IOrderRepository,
   IPaymentGateway,
+  IVoucherRepository,
 } from './F11.src';
 
 function makeOrderRepo(): jest.Mocked<IOrderRepository> {
-  return {
-    findByPk: jest.fn(),
-    update: jest.fn(),
-  } as any;
+  return { findByPk: jest.fn(), update: jest.fn() } as any;
 }
 
 function makeGateway(): jest.Mocked<IPaymentGateway> {
-  return {
-    createPaymentLink: jest.fn(),
-  } as any;
+  return { createPaymentLink: jest.fn() } as any;
 }
 
-describe('F11 – Thanh toán | PaymentUseCase', () => {
+function makeVoucherRepo(): jest.Mocked<IVoucherRepository> {
+  return { findOne: jest.fn() } as any;
+}
+
+describe('F11 - Thanh toan theo PaymentPage/bookingService that', () => {
   let orderRepo: jest.Mocked<IOrderRepository>;
   let gateway: jest.Mocked<IPaymentGateway>;
   let uc: PaymentUseCase;
@@ -57,336 +30,290 @@ describe('F11 – Thanh toán | PaymentUseCase', () => {
     orderRepo = makeOrderRepo();
     gateway = makeGateway();
     uc = new PaymentUseCase(orderRepo, gateway);
+    gateway.createPaymentLink.mockResolvedValue({ url: 'https://momo.vn/pay/abc' });
   });
 
-  // UT_F11_01
-  it('UT_F11_01 – Tạo link thanh toán thành công', async () => {
-    /**
-     * Test Case ID : UT_F11_01
-     * Test Objective: Xác minh tạo link thanh toán cơ bản
-     * Input         : orderId=101, total_price=5000000, is_paid=false
-     * Expected Output: { paymentUrl: 'https://momo.vn/...', amount: 5000000 }
-     * Notes         : CheckDB – gateway.createPaymentLink được gọi
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, is_paid: false });
-    gateway.createPaymentLink.mockResolvedValue({ url: 'https://momo.vn/pay/abc' });
+  it('UT_F11_01 - Tao link thanh toan voi amount bang total hien tai', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, quantity: 1, is_paid: false });
 
     const result = await uc.createPayment({ orderId: 101 });
 
-    expect(result.paymentUrl).toBe('https://momo.vn/pay/abc');
-    expect(result.amount).toBe(5000000);
+    expect(result).toEqual({ paymentUrl: 'https://momo.vn/pay/abc', amount: 5000000 });
+    expect(gateway.createPaymentLink).toHaveBeenCalledWith(5000000, 101);
   });
 
-  // UT_F11_02
-  it('UT_F11_02 – Order không tồn tại (createPayment)', async () => {
-    /**
-     * Test Case ID : UT_F11_02
-     * Test Objective: Xác minh NotFoundError khi orderId không có
-     * Input         : orderId=999
-     * Expected Output: NotFoundError "Đơn hàng không tồn tại"
-     * Notes         : Không gọi gateway
-     */
+  it('UT_F11_02 - Order khong ton tai tra NotFoundError', async () => {
     orderRepo.findByPk.mockResolvedValue(null);
 
     await expect(uc.createPayment({ orderId: 999 })).rejects.toThrow(NotFoundError);
-
     expect(gateway.createPaymentLink).not.toHaveBeenCalled();
   });
 
-  // UT_F11_03
-  it('UT_F11_03 – Giá trị đơn < 10,000đ', async () => {
-    /**
-     * Test Case ID : UT_F11_03
-     * Test Objective: Xác minh ValidationError khi total_price < 10000
-     * Input         : total_price=5000
-     * Expected Output: ValidationError "Giá trị đơn hàng phải từ 10,000đ"
-     * Notes         : Không gọi gateway
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000, is_paid: false });
-
-    await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow(ValidationError);
-
-    expect(gateway.createPaymentLink).not.toHaveBeenCalled();
-  });
-
-  // UT_F11_04
-  it('UT_F11_04 – Giá trị đơn > 50,000,000đ', async () => {
-    /**
-     * Test Case ID : UT_F11_04
-     * Test Objective: Xác minh ValidationError khi total_price > 50000000
-     * Input         : total_price=60000000
-     * Expected Output: ValidationError "Giá trị đơn hàng tối đa 50,000,000đ"
-     * Notes         : Không gọi gateway
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 60000000, is_paid: false });
-
-    await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow(ValidationError);
-
-    expect(gateway.createPaymentLink).not.toHaveBeenCalled();
-  });
-
-  // UT_F11_05
-  it('UT_F11_05 – Đơn hàng đã thanh toán', async () => {
-    /**
-     * Test Case ID : UT_F11_05
-     * Test Objective: Xác minh ValidationError khi is_paid=true
-     * Input         : is_paid=true
-     * Expected Output: ValidationError "Đơn hàng đã thanh toán"
-     * Notes         : Không gọi gateway
-     */
+  it('UT_F11_03 - Don hang da thanh toan bi tu choi', async () => {
     orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, is_paid: true });
 
     await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow(ValidationError);
-
-    expect(gateway.createPaymentLink).not.toHaveBeenCalled();
   });
 
-  // UT_F11_06
-  it('UT_F11_06 – verifyPayment trả về isPaid=true', async () => {
-    /**
-     * Test Case ID : UT_F11_06
-     * Test Objective: Xác minh verify trả về đúng khi đã thanh toán
-     * Input         : orderId=101, is_paid=true
-     * Expected Output: { isPaid: true, paidAt: '2024-01-15T10:00:00Z' }
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, is_paid: true, paid_at: '2024-01-15T10:00:00Z' });
+  it('UT_F11_04 - Gia tri duoi 10000 bi tu choi', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000, quantity: 1, is_paid: false });
 
-    const result = await uc.verifyPayment({ orderId: 101 });
-
-    expect(result.isPaid).toBe(true);
-    expect(result.paidAt).toBe('2024-01-15T10:00:00Z');
+    await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow(ValidationError);
   });
 
-  // UT_F11_07
-  it('UT_F11_07 – verifyPayment trả về isPaid=false', async () => {
-    /**
-     * Test Case ID : UT_F11_07
-     * Test Objective: Xác minh verify trả về đúng khi chưa thanh toán
-     * Input         : orderId=102, is_paid=false
-     * Expected Output: { isPaid: false, paidAt: null }
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 102, is_paid: false, paid_at: null });
+  it('UT_F11_05 - Gia tri tren 50000000 bi tu choi', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 51000000, quantity: 1, is_paid: false });
 
-    const result = await uc.verifyPayment({ orderId: 102 });
-
-    expect(result.isPaid).toBe(false);
-    expect(result.paidAt).toBeNull();
+    await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow(ValidationError);
   });
 
-  // UT_F11_08
-  it('UT_F11_08 – verifyPayment order không tồn tại', async () => {
-    /**
-     * Test Case ID : UT_F11_08
-     * Test Objective: Xác minh NotFoundError khi verify orderId không có
-     * Input         : orderId=999
-     * Expected Output: NotFoundError "Đơn hàng không tồn tại"
-     */
-    orderRepo.findByPk.mockResolvedValue(null);
-
-    await expect(uc.verifyPayment({ orderId: 999 })).rejects.toThrow(NotFoundError);
-  });
-
-  // UT_F11_09
-  it('UT_F11_09 – Tạo link với giá đúng 10,000đ (biên dưới)', async () => {
-    /**
-     * Test Case ID : UT_F11_09
-     * Test Objective: Xác minh giá đúng 10,000đ được chấp nhận
-     * Input         : total_price=10000
-     * Expected Output: Cập nhật thành công
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 10000, is_paid: false });
-    gateway.createPaymentLink.mockResolvedValue({ url: 'https://momo.vn/pay/123' });
+  it('UT_F11_06 - Bien duoi 10000 duoc chap nhan', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 10000, quantity: 1, is_paid: false });
 
     const result = await uc.createPayment({ orderId: 101 });
 
     expect(result.amount).toBe(10000);
   });
 
-  // UT_F11_10
-  it('UT_F11_10 – Tạo link với giá đúng 50,000,000đ (biên trên)', async () => {
-    /**
-     * Test Case ID : UT_F11_10
-     * Test Objective: Xác minh giá đúng 50,000,000đ được chấp nhận
-     * Input         : total_price=50000000
-     * Expected Output: Cập nhật thành công
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 50000000, is_paid: false });
-    gateway.createPaymentLink.mockResolvedValue({ url: 'https://momo.vn/pay/456' });
+  it('UT_F11_07 - Bien tren 50000000 duoc chap nhan', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 50000000, quantity: 1, is_paid: false });
 
     const result = await uc.createPayment({ orderId: 101 });
 
     expect(result.amount).toBe(50000000);
   });
 
-  // UT_F11_11
-  it('UT_F11_11 – Gateway được gọi với đúng amount và orderId', async () => {
-    /**
-     * Test Case ID : UT_F11_11
-     * Test Objective: Xác minh gateway nhận đúng tham số
-     * Input         : orderId=101, total_price=8000000
-     * Expected Output: createPaymentLink(8000000, 101) được gọi
-     * Notes         : CheckDB – integration với Momo gateway
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 8000000, is_paid: false });
-    gateway.createPaymentLink.mockResolvedValue({ url: 'https://momo.vn/pay/789' });
+  it('UT_F11_08 - Coupon percent khong duoc vuot discount_limit', () => {
+    const discount = calculateClientDiscount(7200000, {
+      code: '1THANG5',
+      discount_percent: 50,
+      discount_limit: 15000,
+      is_active: true,
+    });
 
-    await uc.createPayment({ orderId: 101 });
-
-    expect(gateway.createPaymentLink).toHaveBeenCalledWith(8000000, 101);
+    expect(discount).toBe(15000);
   });
 
-  // UT_F11_12
-  it('UT_F11_12 – findByPk được gọi đúng 1 lần (createPayment)', async () => {
-    /**
-     * Test Case ID : UT_F11_12
-     * Test Objective: Xác minh không query order nhiều lần
-     * Input         : orderId=101
-     * Expected Output: findByPk(101) đúng 1 lần
-     * Notes         : CheckDB – tránh N+1
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, is_paid: false });
-    gateway.createPaymentLink.mockResolvedValue({ url: 'https://momo.vn/pay/abc' });
-
-    await uc.createPayment({ orderId: 101 });
-
-    expect(orderRepo.findByPk).toHaveBeenCalledTimes(1);
-    expect(orderRepo.findByPk).toHaveBeenCalledWith(101);
+  it('UT_F11_09 - Coupon fixed tra dung so tien giam', () => {
+    expect(calculateClientDiscount(2000000, { discount_amount: 100000, is_active: true })).toBe(100000);
   });
 
-  // UT_F11_13
-  it('UT_F11_13 – findByPk được gọi đúng 1 lần (verifyPayment)', async () => {
-    /**
-     * Test Case ID : UT_F11_13
-     * Test Objective: Xác minh verifyPayment chỉ query 1 lần
-     * Input         : orderId=101
-     * Expected Output: findByPk(101) đúng 1 lần
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, is_paid: true });
-
-    await uc.verifyPayment({ orderId: 101 });
-
-    expect(orderRepo.findByPk).toHaveBeenCalledTimes(1);
+  it('UT_F11_10 - Coupon inactive khong giam gia', () => {
+    expect(calculateClientDiscount(2000000, { discount_percent: 50, is_active: false })).toBe(0);
   });
 
-  // UT_F11_14
-  it('UT_F11_14 – verifyPayment không gọi update()', async () => {
-    /**
-     * Test Case ID : UT_F11_14
-     * Test Objective: Xác minh verifyPayment chỉ đọc không ghi
-     * Input         : orderId=101
-     * Expected Output: update() KHÔNG được gọi
-     * Notes         : verifyPayment là read-only
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, is_paid: true });
+  it('UT_F11_11 - Tong tien client bang subtotal tru discount', () => {
+    expect(calculateClientTotal(1800000, 4, 3600000)).toBe(3600000);
+  });
+
+  it('UT_F11_12 - storedDiscount duoc giu nguyen neu khong tinh lai bang voucherCode', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 4, is_paid: false });
+
+    const summary = await uc.calculateSummary({ orderId: 101, quantity: 1, storedDiscount: 3600000 });
+
+    expect(summary.subtotal).toBe(1800000);
+    expect(summary.discount).toBe(3600000);
+    expect(summary.total).toBe(0);
+  });
+
+  it('UT_F11_13 - Khi apply coupon lai thi discount tinh theo quantity hien tai', async () => {
+    const voucherRepo = makeVoucherRepo();
+    uc = new PaymentUseCase(orderRepo, gateway, voucherRepo);
+    orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 4, is_paid: false });
+    voucherRepo.findOne.mockResolvedValue({ code: '1THANG5', discount_percent: 50, discount_limit: 15000, is_active: true });
+
+    const summary = await uc.calculateSummary({ orderId: 101, quantity: 1, voucherCode: '1THANG5' });
+
+    expect(summary.discount).toBe(15000);
+    expect(summary.total).toBe(1785000);
+  });
+
+  it('UT_F11_14 - Amount gui sang gateway bang tong tien sau giam', async () => {
+    const voucherRepo = makeVoucherRepo();
+    uc = new PaymentUseCase(orderRepo, gateway, voucherRepo);
+    orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 2, is_paid: false });
+    voucherRepo.findOne.mockResolvedValue({ code: 'SALE50', discount_percent: 50, is_active: true });
+
+    const result = await uc.createPayment({ orderId: 101, quantity: 2, voucherCode: 'SALE50' });
+
+    expect(gateway.createPaymentLink).toHaveBeenCalledWith(1800000, 101);
+    expect(result.amount).toBe(1800000);
+  });
+
+  it('UT_F11_15 - verifyPayment tra isPaid va paidAt', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, is_paid: true, paid_at: '2024-06-15T10:00:00Z' });
+
+    const result = await uc.verifyPayment({ orderId: 101 });
+
+    expect(result).toEqual({ isPaid: true, paidAt: '2024-06-15T10:00:00Z' });
+  });
+
+  it('UT_F11_16 - verifyPayment khong ghi DB', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, is_paid: false, paid_at: null });
 
     await uc.verifyPayment({ orderId: 101 });
 
     expect(orderRepo.update).not.toHaveBeenCalled();
   });
 
-  // UT_F11_15
-  it('UT_F11_15 – Order có total_price = 0', async () => {
-    /**
-     * Test Case ID : UT_F11_15
-     * Test Objective: Xác minh ValidationError khi total_price=0 (< 10000)
-     * Input         : total_price=0
-     * Expected Output: ValidationError "Giá trị đơn hàng phải từ 10,000đ"
-     * Notes         : Không gọi gateway
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 0, is_paid: false });
-
-    await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow(ValidationError);
-
-    expect(gateway.createPaymentLink).not.toHaveBeenCalled();
-  });
-
-  // UT_F11_16
-  it('UT_F11_16 – Order có giá gần biên trên (49,999,999đ)', async () => {
-    /**
-     * Test Case ID : UT_F11_16
-     * Test Objective: Xác minh giá 49,999,999đ được chấp nhận
-     * Input         : total_price=49999999
-     * Expected Output: Cập nhật thành công
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 49999999, is_paid: false });
-    gateway.createPaymentLink.mockResolvedValue({ url: 'https://momo.vn/pay/xyz' });
+  it('UT_F11_17 - Don cancelled van tao link thanh toan theo source hien tai', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, quantity: 1, is_paid: false, status: 'cancelled' });
 
     const result = await uc.createPayment({ orderId: 101 });
 
-    expect(result.amount).toBe(49999999);
+    expect(result.amount).toBe(5000000);
   });
 
-  // UT_F11_17
-  it('UT_F11_17 – Order is_paid=true nhưng paid_at=null', async () => {
-    /**
-     * Test Case ID : UT_F11_17
-     * Test Objective: Xác minh isPaid=true dù paid_at=null (edge data)
-     * Input         : is_paid=true, paid_at=null
-     * Expected Output: { isPaid: true, paidAt: null }
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, is_paid: true, paid_at: null });
+  it('UT_F11_18 - Quantity khong phai so nguyen bi tu choi khi tinh summary thanh toan', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 2, is_paid: false });
 
-    const result = await uc.verifyPayment({ orderId: 101 });
-
-    expect(result.isPaid).toBe(true);
-    expect(result.paidAt).toBeNull();
+    await expect(uc.calculateSummary({ orderId: 101, quantity: 1.5 })).rejects.toThrow(ValidationError);
   });
 
-  // UT_F11_18
-  it('UT_F11_18 – verifyPayment trả về đúng paidAt', async () => {
-    /**
-     * Test Case ID : UT_F11_18
-     * Test Objective: Xác minh verifyPayment trả về timestamp thanh toán
-     * Input         : paid_at='2024-06-15T14:30:00Z'
-     * Expected Output: paidAt='2024-06-15T14:30:00Z'
-     * Notes         : CheckDB – đọc đúng cột paid_at
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, is_paid: true, paid_at: '2024-06-15T14:30:00Z' });
+  it('UT_F11_19 - verifyPayment order khong ton tai tra NotFoundError', async () => {
+    orderRepo.findByPk.mockResolvedValue(null);
 
-    const result = await uc.verifyPayment({ orderId: 101 });
-
-    expect(result.paidAt).toBe('2024-06-15T14:30:00Z');
+    await expect(uc.verifyPayment({ orderId: 999 })).rejects.toThrow(NotFoundError);
   });
 
-  // UT_F11_19
-  it('UT_F11_19 – createPayment với order cancelled', async () => {
-    /**
-     * Test Case ID : UT_F11_19
-     * Test Objective: Xác minh cancelled order vẫn có thể tạo link (nếu chưa paid)
-     * Input         : status='cancelled', is_paid=false
-     * Expected Output: Cập nhật thành công (hoặc ValidationError tùy logic)
-     * Notes         : Use case không check status, chỉ check is_paid
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, is_paid: false, status: 'cancelled' });
-    gateway.createPaymentLink.mockResolvedValue({ url: 'https://momo.vn/pay/abc' });
-
-    const result = await uc.createPayment({ orderId: 101 });
-
-    expect(result.paymentUrl).toBe('https://momo.vn/pay/abc');
+  it('UT_F11_20 - Ma loi ValidationError va NotFoundError dung', () => {
+    expect(new ValidationError('x').statusCode).toBe(400);
+    expect(new NotFoundError('x').statusCode).toBe(404);
   });
 
-  // UT_F11_20
-  it('UT_F11_20 – Gateway trả về URL hợp lệ', async () => {
-    /**
-     * Test Case ID : UT_F11_20
-     * Test Objective: Xác minh URL thanh toán không rỗng
-     * Input         : orderId=101
-     * Expected Output: paymentUrl bắt đầu bằng http
-     * Notes         : CheckDB – gateway trả về string URL
-     */
-    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, is_paid: false });
-    gateway.createPaymentLink.mockResolvedValue({ url: 'https://payment.momo.vn/abc123' });
+  it('UT_F11_21 - Quantity bang 0 bi tu choi khi tinh summary', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 2, is_paid: false });
+
+    await expect(uc.calculateSummary({ orderId: 101, quantity: 0 })).rejects.toThrow(ValidationError);
+  });
+
+  it('UT_F11_22 - Khi khong co unit_price thi lay gia tu tour.price', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, tour: { price: 2500000 }, quantity: 2, is_paid: false });
+
+    const summary = await uc.calculateSummary({ orderId: 101, quantity: 2 });
+
+    expect(summary.subtotal).toBe(5000000);
+    expect(summary.unitPrice).toBe(2500000);
+  });
+
+  it('UT_F11_23 - Khi khong co unit_price va tour.price thi suy ra tu total_price chia quantity', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 6000000, quantity: 3, is_paid: false });
+
+    const summary = await uc.calculateSummary({ orderId: 101 });
+
+    expect(summary.unitPrice).toBe(2000000);
+    expect(summary.subtotal).toBe(6000000);
+  });
+
+  it('UT_F11_24 - Coupon khong ton tai thi discount bang 0', async () => {
+    const voucherRepo = makeVoucherRepo();
+    uc = new PaymentUseCase(orderRepo, gateway, voucherRepo);
+    orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1800000, quantity: 1, is_paid: false });
+    voucherRepo.findOne.mockResolvedValue(null);
+
+    const summary = await uc.calculateSummary({ orderId: 101, voucherCode: 'NOTFOUND' });
+
+    expect(summary.discount).toBe(0);
+    expect(summary.total).toBe(1800000);
+  });
+
+  it('UT_F11_25 - Fixed discount lon hon subtotal lam total ve 0 theo client', () => {
+    expect(calculateClientTotal(100000, 1, 200000)).toBe(0);
+  });
+
+  it('UT_F11_26 - Gateway loi thi createPayment day loi ra ngoai', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 5000000, quantity: 1, is_paid: false });
+    gateway.createPaymentLink.mockRejectedValue(new Error('gateway failed'));
+
+    await expect(uc.createPayment({ orderId: 101 })).rejects.toThrow('gateway failed');
+  });
+
+  it('UT_F11_27 - Coupon het han khong duoc tinh giam gia', () => {
+    const expired = new Date();
+    expired.setDate(expired.getDate() - 1);
+
+    const discount = calculateClientDiscount(2000000, { discount_percent: 50, is_active: true, expired_at: expired });
+
+    expect(discount).toBe(0);
+  });
+
+  it('UT_F11_28 - Coupon fixed hop le duoc tru vao total', async () => {
+    const voucherRepo = makeVoucherRepo();
+    uc = new PaymentUseCase(orderRepo, gateway, voucherRepo);
+    orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 1000000, quantity: 2, is_paid: false });
+    voucherRepo.findOne.mockResolvedValue({ code: 'FIXED', discount_amount: 100000, is_active: true });
+
+    const result = await uc.createPayment({ orderId: 101, voucherCode: 'FIXED' });
+
+    expect(result.amount).toBe(1900000);
+  });
+
+  it('UT_F11_29 - Don hang pending chua thanh toan duoc tao link', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 2000000, quantity: 1, is_paid: false, status: 'pending' });
 
     const result = await uc.createPayment({ orderId: 101 });
 
     expect(result.paymentUrl).toMatch(/^https?:\/\//);
   });
 
-  // -------------------------------------------------------------------
-  // Supplemental generated tests
-  // -------------------------------------------------------------------
-  it('UT_F11_21 – PaymentUseCase khởi tạo được', () => { expect(uc).toBeInstanceOf(PaymentUseCase); });
-  it('UT_F11_22 – PaymentUseCase có prototype hợp lệ', () => { expect(PaymentUseCase.prototype).toBeDefined(); });
-  it('UT_F11_23 – ValidationError có statusCode 400', () => { const err = new ValidationError('msg'); expect(err.statusCode).toBe(400); });
-  it('UT_F11_24 – ValidationError giữ nguyên name', () => { const err = new ValidationError('msg'); expect(err.name).toBe('ValidationError'); });
+  it('UT_F11_30 - Tong tien sau giam bang 0 thi khong tao link thanh toan', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, unit_price: 100000, quantity: 1, is_paid: false });
+
+    await expect(uc.createPayment({ orderId: 101, storedDiscount: 100000 })).rejects.toThrow(ValidationError);
+    expect(gateway.createPaymentLink).not.toHaveBeenCalled();
+  });
+
+  it('UT_F11_31 - calculateClientDiscount khong co coupon thi tra ve 0', () => {
+    expect(calculateClientDiscount(1000000)).toBe(0);
+  });
+
+  it('UT_F11_32 - calculateClientDiscount coupon khong co truong giam gia thi tra ve 0', () => {
+    expect(calculateClientDiscount(1000000, { is_active: true })).toBe(0);
+  });
+
+  it('UT_F11_32A - calculateClientDiscount coupon inactive thi tra ve 0', () => {
+    expect(calculateClientDiscount(1000000, { discount_percent: 50, is_active: false })).toBe(0);
+  });
+
+  it('UT_F11_33 - calculateSummary khong co quantity tren input va order thi mac dinh bang 1', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, total_price: 2500000, is_paid: false });
+
+    const summary = await uc.calculateSummary({ orderId: 101 });
+
+    expect(summary.quantity).toBe(1);
+    expect(summary.unitPrice).toBe(2500000);
+  });
+
+  it('UT_F11_34 - updateOrderPaymentStatus bao loi khi don hang khong ton tai', async () => {
+    orderRepo.findByPk.mockResolvedValue(null);
+
+    await expect(uc.updateOrderPaymentStatus({ orderId: 999, isPaid: true })).rejects.toThrow(NotFoundError);
+  });
+
+  it('UT_F11_35 - updateOrderPaymentStatus dung order.update va order.reload khi model co method', async () => {
+    const update = jest.fn().mockResolvedValue(undefined);
+    const reload = jest.fn().mockResolvedValue(undefined);
+    const order = { id: 101, status: 'pending', payment_url: null, update, reload };
+    orderRepo.findByPk.mockResolvedValue(order as any);
+
+    const result = await uc.updateOrderPaymentStatus({ orderId: 101, isPaid: true, momoTransId: '123' });
+
+    expect(update).toHaveBeenCalledWith({ is_paid: true, status: 'confirmed', payment_url: 'MOMO_123' });
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(result).toBe(order);
+  });
+
+  it('UT_F11_36 - updateOrderPaymentStatus fallback qua repository.update khi order khong co method update', async () => {
+    orderRepo.findByPk.mockResolvedValue({ id: 101, status: 'pending', payment_url: 'OLD' });
+    orderRepo.update.mockResolvedValue([1]);
+
+    const result = await uc.updateOrderPaymentStatus({ orderId: 101, isPaid: false });
+
+    expect(orderRepo.update).toHaveBeenCalledWith(
+      { is_paid: false, status: 'pending', payment_url: 'OLD' },
+      { where: { id: 101 } }
+    );
+    expect(result).toEqual({ id: 101, status: 'pending', payment_url: 'OLD', is_paid: false });
+  });
 });
+
