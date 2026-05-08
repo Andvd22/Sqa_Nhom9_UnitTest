@@ -1,36 +1,4 @@
-/**
- * @file Sqa_Nhom9_UT_F07.test.ts
- * @module F07_DoiMatKhau
- * @description Unit tests for ChangePasswordUseCase - F07: Đổi mật khẩu
- * @group Nhom 09 - SQA
- *
- * Covers:
- *  - Đổi mật khẩu thành công
- *  - Sai mật khẩu cũ
- *  - Mật khẩu mới < 6 ký tự
- *  - User không tồn tại
- *  - Mật khẩu mới > 128 ký tự
- *  - Xác nhận mật khẩu không khớp
- *  - Mật khẩu mới trùng cũ
- *  - Đổi với confirmPass đúng
- *  - Old pass rỗng
- *  - New pass rỗng
- *  - User bị khóa vẫn đổi được
- *  - Hash được gọi đúng
- *  - update() được gọi đúng 1 lần
- *  - findByPk() được gọi đúng 1 lần
- *  - Biên dưới 6 ký tự
- *  - Biên trên 128 ký tự
- *  - Không truyền confirmPass
- *  - password_hash là null
- *  - compare() đúng tham số
- *  - Đổi pass liên tiếp 2 lần
- */
-
-// =====================================================================
-// IMPORT FROM SOURCE FILE (enables Jest coverage measurement)
-// =====================================================================
-import {
+﻿import {
   ChangePasswordUseCase,
   ValidationError,
   NotFoundError,
@@ -38,483 +6,303 @@ import {
   IPasswordService,
 } from './F07.src';
 
-// =====================================================================
-// HELPERS – factory functions for mock repository & password service
-// =====================================================================
-function makeUserRepo(): jest.Mocked<IUserRepository> {
+function makeUser(passwordHash = 'oldhash', compareResult = true, extra: any = {}) {
   return {
-    findByPk: jest.fn(),
-    update: jest.fn(),
-  } as any;
+    id: 1,
+    password_hash: passwordHash,
+    comparePassword: jest.fn().mockResolvedValue(compareResult),
+    getDataValue: jest.fn((key: string) => extra[key]),
+    ...extra,
+  };
 }
 
-function makePwdSvc(): jest.Mocked<IPasswordService> {
-  return {
-    compare: jest.fn(),
-    hash: jest.fn(),
-  } as any;
-}
-
-// =====================================================================
-// TEST SUITE
-// =====================================================================
-describe('F07 – Đổi mật khẩu | ChangePasswordUseCase', () => {
+describe('F07 - Đổi mật khẩu | bám source AuthService.changePassword', () => {
   let repo: jest.Mocked<IUserRepository>;
   let pwd: jest.Mocked<IPasswordService>;
   let uc: ChangePasswordUseCase;
 
   beforeEach(() => {
-    repo = makeUserRepo();
-    pwd = makePwdSvc();
+    repo = { findByPk: jest.fn(), update: jest.fn() } as any;
+    pwd = { hash: jest.fn() } as any;
     uc = new ChangePasswordUseCase(repo, pwd);
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_01
-  // -------------------------------------------------------------------
-  it('UT_F07_01 – Đổi mật khẩu thành công', async () => {
-    /**
-     * Test Case ID : UT_F07_01
-     * Test Objective: Xác minh đổi mật khẩu cơ bản thành công
-     * Input         : userId=1, oldPass='old123', newPass='new123'
-     * Expected Output: { message: 'Đổi mật khẩu thành công' }
-     * Notes         : CheckDB – update() được gọi với password_hash mới
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
+  it('UT_F07_01 - Xác minh đổi mật khẩu thành công khi mật khẩu cũ đúng', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
     pwd.hash.mockResolvedValue('newhash');
     repo.update.mockResolvedValue([1]);
 
-    const result = await uc.execute({ userId: 1, oldPass: 'old123', newPass: 'new123' });
+    const result = await uc.execute({ userId: 1, oldPass: 'User@123456', newPass: 'User@654321' });
 
-    expect(result.message).toBe('Đổi mật khẩu thành công');
-    expect(repo.update).toHaveBeenCalledWith(
-      expect.objectContaining({ password_hash: 'newhash' }),
-      { where: { id: 1 } }
-    );
+    expect(result).toBe(true);
+    expect(pwd.hash).toHaveBeenCalledWith('User@654321');
+    expect(repo.update).toHaveBeenCalledWith({ password_hash: 'newhash' }, { where: { id: 1 } });
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_02
-  // -------------------------------------------------------------------
-  it('UT_F07_02 – Sai mật khẩu cũ', async () => {
-    /**
-     * Test Case ID : UT_F07_02
-     * Test Objective: Xác minh ValidationError khi mật khẩu cũ không đúng
-     * Input         : oldPass='wrong'
-     * Expected Output: ValidationError "Mật khẩu cũ không đúng"
-     * Notes         : Không gọi hash() hay update()
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(false);
+  it('UT_F07_02 - Xác minh ValidationError khi mật khẩu cũ không đúng', async () => {
+    repo.findByPk.mockResolvedValue(makeUser('oldhash', false));
 
     await expect(
-      uc.execute({ userId: 1, oldPass: 'wrong', newPass: 'new123' })
+      uc.execute({ userId: 1, oldPass: 'wrong', newPass: 'User@654321' })
     ).rejects.toThrow(ValidationError);
-
     expect(pwd.hash).not.toHaveBeenCalled();
     expect(repo.update).not.toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_03
-  // -------------------------------------------------------------------
-  it('UT_F07_03 – Mật khẩu mới < 6 ký tự', async () => {
-    /**
-     * Test Case ID : UT_F07_03
-     * Test Objective: Xác minh ValidationError khi mật khẩu mới quá ngắn
-     * Input         : newPass='12345'
-     * Expected Output: ValidationError "Mật khẩu mới >= 6 ký tự"
-     * Notes         : Không hash/update
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
-
-    await expect(
-      uc.execute({ userId: 1, oldPass: 'old123', newPass: '12345' })
-    ).rejects.toThrow(ValidationError);
-
-    expect(repo.update).not.toHaveBeenCalled();
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_04
-  // -------------------------------------------------------------------
-  it('UT_F07_04 – User không tồn tại', async () => {
-    /**
-     * Test Case ID : UT_F07_04
-     * Test Objective: Xác minh NotFoundError khi userId không có trong DB
-     * Input         : userId=999
-     * Expected Output: NotFoundError "Người dùng không tồn tại"
-     * Notes         : Không gọi compare/hash/update
-     */
+  it('UT_F07_03 - Xác minh NotFoundError khi userId không tồn tại', async () => {
     repo.findByPk.mockResolvedValue(null);
 
     await expect(
-      uc.execute({ userId: 999, oldPass: 'old123', newPass: 'new123' })
+      uc.execute({ userId: 999, oldPass: 'old', newPass: 'new' })
     ).rejects.toThrow(NotFoundError);
-
-    expect(pwd.compare).not.toHaveBeenCalled();
-    expect(repo.update).not.toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_05
-  // -------------------------------------------------------------------
-  it('UT_F07_05 – Mật khẩu mới > 128 ký tự', async () => {
-    /**
-     * Test Case ID : UT_F07_05
-     * Test Objective: Xác minh ValidationError khi mật khẩu mới quá dài
-     * Input         : newPass='x'.repeat(129)
-     * Expected Output: ValidationError "Mật khẩu mới <= 128 ký tự"
-     * Notes         : Không hash/update
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
+  it('UT_F07_04 - Xác minh ValidationError khi tài khoản Google đổi mật khẩu', async () => {
+    repo.findByPk.mockResolvedValue(makeUser('oldhash', true, { google_id: 'google-1' }));
 
     await expect(
-      uc.execute({ userId: 1, oldPass: 'old123', newPass: 'x'.repeat(129) })
+      uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })
     ).rejects.toThrow(ValidationError);
-
-    expect(repo.update).not.toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_06
-  // -------------------------------------------------------------------
-  it('UT_F07_06 – Xác nhận mật khẩu không khớp', async () => {
-    /**
-     * Test Case ID : UT_F07_06
-     * Test Objective: Xác minh ValidationError khi confirmPass khác newPass
-     * Input         : newPass='new123', confirmPass='different'
-     * Expected Output: ValidationError "Xác nhận mật khẩu không khớp"
-     * Notes         : Không hash/update
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
+  it('UT_F07_05 - Xác minh ValidationError khi password_hash rỗng', async () => {
+    repo.findByPk.mockResolvedValue(makeUser('', true));
 
     await expect(
-      uc.execute({ userId: 1, oldPass: 'old123', newPass: 'new123', confirmPass: 'different' })
+      uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })
     ).rejects.toThrow(ValidationError);
-
-    expect(repo.update).not.toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_07
-  // -------------------------------------------------------------------
-  it('UT_F07_07 – Mật khẩu mới trùng mật khẩu cũ', async () => {
-    /**
-     * Test Case ID : UT_F07_07
-     * Test Objective: Xác minh ValidationError khi newPass === oldPass
-     * Input         : oldPass='same123', newPass='same123'
-     * Expected Output: ValidationError "Mật khẩu mới phải khác mật khẩu cũ"
-     * Notes         : Không hash/update
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
+  it('UT_F07_06 - Xác minh ValidationError khi mật khẩu mới trùng mật khẩu cũ', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('samehash');
+    repo.update.mockResolvedValue([1]);
 
     await expect(
-      uc.execute({ userId: 1, oldPass: 'same123', newPass: 'same123' })
+      uc.execute({ userId: 1, oldPass: 'User@123456', newPass: 'User@123456' })
     ).rejects.toThrow(ValidationError);
-
     expect(repo.update).not.toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_08
-  // -------------------------------------------------------------------
-  it('UT_F07_08 – Đổi với confirmPass đúng', async () => {
-    /**
-     * Test Case ID : UT_F07_08
-     * Test Objective: Xác minh đổi thành công khi có confirmPass khớp
-     * Input         : newPass='new123', confirmPass='new123'
-     * Expected Output: { message: 'Đổi mật khẩu thành công' }
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
+  it('UT_F07_07 - Xác minh ValidationError khi mật khẩu mới quá ngắn', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('weakhash');
+    repo.update.mockResolvedValue([1]);
+
+    await expect(
+      uc.execute({ userId: 1, oldPass: 'User@123456', newPass: '123' })
+    ).rejects.toThrow(ValidationError);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('UT_F07_08 - Xác minh ValidationError khi confirmPass không khớp newPass', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
     pwd.hash.mockResolvedValue('newhash');
     repo.update.mockResolvedValue([1]);
 
-    const result = await uc.execute({
-      userId: 1,
-      oldPass: 'old123',
-      newPass: 'new123',
-      confirmPass: 'new123',
-    });
-
-    expect(result.message).toBe('Đổi mật khẩu thành công');
+    await expect(
+      uc.execute({ userId: 1, oldPass: 'User@123456', newPass: 'User@654321', confirmPass: 'different' })
+    ).rejects.toThrow(ValidationError);
+    expect(repo.update).not.toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_09
-  // -------------------------------------------------------------------
-  it('UT_F07_09 – Old pass rỗng', async () => {
-    /**
-     * Test Case ID : UT_F07_09
-     * Test Objective: Xác minh ValidationError khi oldPass rỗng (compare trả false)
-     * Input         : oldPass=''
-     * Expected Output: ValidationError "Mật khẩu cũ không đúng"
-     * Notes         : compare('','oldhash') trả về false
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(false);
+  it('UT_F07_09 - Xác minh ValidationError khi update không ảnh hưởng dòng nào', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('newhash');
+    repo.update.mockResolvedValue([0]);
 
     await expect(
-      uc.execute({ userId: 1, oldPass: '', newPass: 'new123' })
+      uc.execute({ userId: 1, oldPass: 'User@123456', newPass: 'User@654321' })
     ).rejects.toThrow(ValidationError);
+  });
 
+  it('UT_F07_10 - Xác minh findByPk gọi kèm attributes include password_hash', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('newhash');
+    repo.update.mockResolvedValue([1]);
+
+    await uc.execute({ userId: 1, oldPass: 'User@123456', newPass: 'User@654321' });
+
+    expect(repo.findByPk).toHaveBeenCalledWith(1, { attributes: { include: ['password_hash'] } });
+  });
+
+  it('UT_F07_11 - Xác minh comparePassword nhận đúng mật khẩu cũ', async () => {
+    const user = makeUser();
+    repo.findByPk.mockResolvedValue(user);
+    pwd.hash.mockResolvedValue('newhash');
+    repo.update.mockResolvedValue([1]);
+
+    await uc.execute({ userId: 1, oldPass: 'Old@123456', newPass: 'New@123456' });
+
+    expect(user.comparePassword).toHaveBeenCalledWith('Old@123456');
+  });
+
+  it('UT_F07_12 - Xác minh newPass có khoảng trắng vẫn được hash theo source hiện tại', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('hash-space');
+    repo.update.mockResolvedValue([1]);
+
+    await uc.execute({ userId: 1, oldPass: 'Old@123456', newPass: '   New@123456   ' });
+
+    expect(pwd.hash).toHaveBeenCalledWith('   New@123456   ');
+  });
+
+  it('UT_F07_13 - Xác minh ValidationError khi mật khẩu mới rỗng', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('emptyhash');
+    repo.update.mockResolvedValue([1]);
+
+    await expect(uc.execute({ userId: 1, oldPass: 'Old@123456', newPass: '' })).rejects.toThrow(ValidationError);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('UT_F07_14 - Xác minh ValidationError khi google_id lấy qua getDataValue', async () => {
+    const user = makeUser('oldhash', true, { getDataValue: jest.fn((key: string) => key === 'google_id' ? 'gid-1' : undefined) });
+    repo.findByPk.mockResolvedValue(user);
+
+    await expect(uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })).rejects.toThrow(ValidationError);
+  });
+
+  it('UT_F07_15 - Xác minh ValidationError khi user có google_id trực tiếp', async () => {
+    repo.findByPk.mockResolvedValue(makeUser('oldhash', true, { google_id: 'gid-1' }));
+
+    await expect(uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })).rejects.toThrow(ValidationError);
+  });
+
+  it('UT_F07_16 - Xác minh ValidationError khi password_hash là null', async () => {
+    repo.findByPk.mockResolvedValue(makeUser(null as any, true));
+
+    await expect(uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })).rejects.toThrow(ValidationError);
+  });
+
+  it('UT_F07_17 - Xác minh update dùng đúng userId hiện tại', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('newhash');
+    repo.update.mockResolvedValue([1]);
+
+    await uc.execute({ userId: 7, oldPass: 'old', newPass: 'new' });
+
+    expect(repo.update).toHaveBeenCalledWith({ password_hash: 'newhash' }, { where: { id: 7 } });
+  });
+
+  it('UT_F07_18 - Xác minh hash service lỗi thì không update DB', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockRejectedValue(new Error('hash failed'));
+
+    await expect(uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })).rejects.toThrow('hash failed');
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('UT_F07_19 - Xác minh confirmPass undefined vẫn thành công theo source hiện tại', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('newhash');
+    repo.update.mockResolvedValue([1]);
+
+    await expect(uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })).resolves.toBe(true);
+  });
+
+  it('UT_F07_20 - Xác minh các lớp lỗi giữ đúng status code', () => {
+    expect(new ValidationError('msg').statusCode).toBe(400);
+    expect(new NotFoundError('msg').statusCode).toBe(404);
+  });
+
+  it('UT_F07_21 - Xác minh oldPass rỗng vẫn được đưa vào comparePassword theo source hiện tại', async () => {
+    const user = makeUser();
+    repo.findByPk.mockResolvedValue(user);
+    pwd.hash.mockResolvedValue('newhash');
+    repo.update.mockResolvedValue([1]);
+
+    await uc.execute({ userId: 1, oldPass: '', newPass: 'New@123456' });
+
+    expect(user.comparePassword).toHaveBeenCalledWith('');
+  });
+
+  it('UT_F07_22 - Xác minh ValidationError khi mật khẩu mới quá dài', async () => {
+    const longPassword = 'A@1'.repeat(100);
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('longhash');
+    repo.update.mockResolvedValue([1]);
+
+    await expect(uc.execute({ userId: 1, oldPass: 'Old@123456', newPass: longPassword })).rejects.toThrow(ValidationError);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('UT_F07_23 - Xác minh comparePassword lỗi thì không hash và không update', async () => {
+    const user = makeUser();
+    user.comparePassword.mockRejectedValue(new Error('compare failed'));
+    repo.findByPk.mockResolvedValue(user);
+
+    await expect(uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })).rejects.toThrow('compare failed');
     expect(pwd.hash).not.toHaveBeenCalled();
     expect(repo.update).not.toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_10
-  // -------------------------------------------------------------------
-  it('UT_F07_10 – New pass rỗng', async () => {
-    /**
-     * Test Case ID : UT_F07_10
-     * Test Objective: Xác minh ValidationError khi newPass rỗng (length=0 < 6)
-     * Input         : newPass=''
-     * Expected Output: ValidationError "Mật khẩu mới >= 6 ký tự"
-     * Notes         : Qua compare rồi mới validate length
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
+  it('UT_F07_24 - Xác minh newPass thiếu chữ hoa vẫn được hash theo source hiện tại', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('hash');
+    repo.update.mockResolvedValue([1]);
 
-    await expect(
-      uc.execute({ userId: 1, oldPass: 'old123', newPass: '' })
-    ).rejects.toThrow(ValidationError);
-
-    expect(repo.update).not.toHaveBeenCalled();
+    await expect(uc.execute({ userId: 1, oldPass: 'Old@123456', newPass: 'lower@123' })).resolves.toBe(true);
+    expect(repo.update).toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_11
-  // -------------------------------------------------------------------
-  it('UT_F07_11 – User bị khóa vẫn đổi được', async () => {
-    /**
-     * Test Case ID : UT_F07_11
-     * Test Objective: Xác minh tài khoản bị khóa vẫn có thể đổi pass
-     * Input         : is_active=false
-     * Expected Output: Cập nhật thành công
-     * Notes         : Use case không kiểm tra is_active
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash', is_active: false });
-    pwd.compare.mockResolvedValue(true);
+  it('UT_F07_25 - Xác minh newPass thiếu ký tự đặc biệt vẫn được hash theo source hiện tại', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('hash');
+    repo.update.mockResolvedValue([1]);
+
+    await expect(uc.execute({ userId: 1, oldPass: 'Old@123456', newPass: 'New123456' })).resolves.toBe(true);
+    expect(repo.update).toHaveBeenCalled();
+  });
+
+  it('UT_F07_26 - Xác minh newPass chỉ khoảng trắng vẫn được hash theo source hiện tại', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('spacehash');
+    repo.update.mockResolvedValue([1]);
+
+    await expect(uc.execute({ userId: 1, oldPass: 'Old@123456', newPass: '        ' })).resolves.toBe(true);
+  });
+
+  it('UT_F07_27 - Xác minh đổi mật khẩu hợp lệ chỉ hash một lần', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
     pwd.hash.mockResolvedValue('newhash');
     repo.update.mockResolvedValue([1]);
 
-    const result = await uc.execute({ userId: 1, oldPass: 'old123', newPass: 'new123' });
+    await uc.execute({ userId: 1, oldPass: 'Old@123456', newPass: 'New@123456' });
 
-    expect(result.message).toBe('Đổi mật khẩu thành công');
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_12
-  // -------------------------------------------------------------------
-  it('UT_F07_12 – Hash được gọi với đúng newPass', async () => {
-    /**
-     * Test Case ID : UT_F07_12
-     * Test Objective: Xác minh password service hash đúng chuỗi mật khẩu mới
-     * Input         : newPass='new123'
-     * Expected Output: hash('new123') được gọi
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
-    pwd.hash.mockResolvedValue('newhash');
-    repo.update.mockResolvedValue([1]);
-
-    await uc.execute({ userId: 1, oldPass: 'old123', newPass: 'new123' });
-
-    expect(pwd.hash).toHaveBeenCalledWith('new123');
     expect(pwd.hash).toHaveBeenCalledTimes(1);
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_13
-  // -------------------------------------------------------------------
-  it('UT_F07_13 – update() được gọi đúng 1 lần', async () => {
-    /**
-     * Test Case ID : UT_F07_13
-     * Test Objective: Xác minh không có vòng lặp/retry update DB
-     * Input         : userId=1, newPass='new123'
-     * Expected Output: update() đúng 1 lần
-     * Notes         : Rollback – gọi nhiều lần sẽ gây lỗi dữ liệu
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
-    pwd.hash.mockResolvedValue('newhash');
-    repo.update.mockResolvedValue([1]);
-
-    await uc.execute({ userId: 1, oldPass: 'old123', newPass: 'new123' });
-
     expect(repo.update).toHaveBeenCalledTimes(1);
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_14
-  // -------------------------------------------------------------------
-  it('UT_F07_14 – findByPk() được gọi đúng 1 lần với userId', async () => {
-    /**
-     * Test Case ID : UT_F07_14
-     * Test Objective: Xác minh tra cứu user trước khi đổi pass
-     * Input         : userId=1
-     * Expected Output: findByPk(1) được gọi đúng 1 lần
-     * Notes         : CheckDB – tránh N+1 query
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
-    pwd.hash.mockResolvedValue('newhash');
-    repo.update.mockResolvedValue([1]);
+  it('UT_F07_28 - Xác minh oldPass sai có khoảng trắng thì không được update', async () => {
+    repo.findByPk.mockResolvedValue(makeUser('oldhash', false));
 
-    await uc.execute({ userId: 1, oldPass: 'old123', newPass: 'new123' });
-
-    expect(repo.findByPk).toHaveBeenCalledTimes(1);
-    expect(repo.findByPk).toHaveBeenCalledWith(1);
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_15
-  // -------------------------------------------------------------------
-  it('UT_F07_15 – Mật khẩu mới đúng 6 ký tự (biên dưới)', async () => {
-    /**
-     * Test Case ID : UT_F07_15
-     * Test Objective: Xác minh mật khẩu mới đúng 6 ký tự được chấp nhận
-     * Input         : newPass='123456'
-     * Expected Output: Cập nhật thành công
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
-    pwd.hash.mockResolvedValue('newhash');
-    repo.update.mockResolvedValue([1]);
-
-    const result = await uc.execute({ userId: 1, oldPass: 'old123', newPass: '123456' });
-
-    expect(result.message).toBe('Đổi mật khẩu thành công');
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_16
-  // -------------------------------------------------------------------
-  it('UT_F07_16 – Mật khẩu mới đúng 128 ký tự (biên trên)', async () => {
-    /**
-     * Test Case ID : UT_F07_16
-     * Test Objective: Xác minh mật khẩu mới đúng 128 ký tự được chấp nhận
-     * Input         : newPass='x'.repeat(128)
-     * Expected Output: Cập nhật thành công
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
-    pwd.hash.mockResolvedValue('newhash');
-    repo.update.mockResolvedValue([1]);
-
-    const longPass = 'x'.repeat(128);
-    const result = await uc.execute({ userId: 1, oldPass: 'old123', newPass: longPass });
-
-    expect(result.message).toBe('Đổi mật khẩu thành công');
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_17
-  // -------------------------------------------------------------------
-  it('UT_F07_17 – Không truyền confirmPass (undefined) vẫn OK', async () => {
-    /**
-     * Test Case ID : UT_F07_17
-     * Test Objective: Xác minh confirmPass là optional
-     * Input         : không có confirmPass trong input
-     * Expected Output: Cập nhật thành công
-     * Notes         : confirmPass===undefined nên bỏ qua check khớp
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
-    pwd.hash.mockResolvedValue('newhash');
-    repo.update.mockResolvedValue([1]);
-
-    const result = await uc.execute({ userId: 1, oldPass: 'old123', newPass: 'new123' });
-
-    expect(result.message).toBe('Đổi mật khẩu thành công');
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_18
-  // -------------------------------------------------------------------
-  it('UT_F07_18 – User có password_hash là null (compare trả false)', async () => {
-    /**
-     * Test Case ID : UT_F07_18
-     * Test Objective: Xác minh ValidationError khi password_hash null
-     * Input         : user.password_hash=null
-     * Expected Output: ValidationError "Mật khẩu cũ không đúng"
-     * Notes         : compare() với null trả về false
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: null });
-    pwd.compare.mockResolvedValue(false);
-
-    await expect(
-      uc.execute({ userId: 1, oldPass: 'old123', newPass: 'new123' })
-    ).rejects.toThrow(ValidationError);
-
-    expect(pwd.hash).not.toHaveBeenCalled();
+    await expect(uc.execute({ userId: 1, oldPass: ' Old@123456 ', newPass: 'New@123456' })).rejects.toThrow(ValidationError);
     expect(repo.update).not.toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_19
-  // -------------------------------------------------------------------
-  it('UT_F07_19 – compare() được gọi với đúng oldPass và password_hash', async () => {
-    /**
-     * Test Case ID : UT_F07_19
-     * Test Objective: Xác minh password service compare nhận đúng tham số
-     * Input         : oldPass='old123', password_hash='oldhash'
-     * Expected Output: compare('old123','oldhash') được gọi
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, password_hash: 'oldhash' });
-    pwd.compare.mockResolvedValue(true);
+  it('UT_F07_29 - Xác minh password_hash được lấy qua getDataValue khi không có trên property', async () => {
+    const user = {
+      id: 1,
+      password_hash: undefined,
+      comparePassword: jest.fn().mockResolvedValue(true),
+      getDataValue: jest.fn((key: string) => (key === 'password_hash' ? 'hash-from-db' : undefined)),
+    };
+    repo.findByPk.mockResolvedValue(user);
     pwd.hash.mockResolvedValue('newhash');
     repo.update.mockResolvedValue([1]);
 
-    await uc.execute({ userId: 1, oldPass: 'old123', newPass: 'new123' });
-
-    expect(pwd.compare).toHaveBeenCalledWith('old123', 'oldhash');
-    expect(pwd.compare).toHaveBeenCalledTimes(1);
+    await expect(uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })).resolves.toBe(true);
+    expect(user.password_hash).toBe('hash-from-db');
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F07_20
-  // -------------------------------------------------------------------
-  it('UT_F07_20 – Đổi pass liên tiếp 2 lần với mật khẩu khác nhau', async () => {
-    /**
-     * Test Case ID : UT_F07_20
-     * Test Objective: Xác minh đổi pass nhiều lần liên tiếp thành công
-     * Input         : Lần 1 newPass='passAA', lần 2 newPass='passBB'
-     * Expected Output: Cả 2 lần đều thành công
-     * Notes         : CheckDB – mỗi lần update() được gọi 1 lần
-     */
-    repo.findByPk
-      .mockResolvedValueOnce({ id: 1, password_hash: 'hash1' })
-      .mockResolvedValueOnce({ id: 1, password_hash: 'hashA' });
-    pwd.compare.mockResolvedValue(true);
-    pwd.hash
-      .mockResolvedValueOnce('hashA')
-      .mockResolvedValueOnce('hashB');
-    repo.update.mockResolvedValue([1]);
+  it('UT_F07_30 - Xác minh update trả về số nguyên vẫn được xem là cập nhật thành công', async () => {
+    repo.findByPk.mockResolvedValue(makeUser());
+    pwd.hash.mockResolvedValue('newhash');
+    repo.update.mockResolvedValue(1 as any);
 
-    const r1 = await uc.execute({ userId: 1, oldPass: 'old123', newPass: 'passAA' });
-    const r2 = await uc.execute({ userId: 1, oldPass: 'passAA', newPass: 'passBB' });
-
-    expect(r1.message).toBe('Đổi mật khẩu thành công');
-    expect(r2.message).toBe('Đổi mật khẩu thành công');
-    expect(pwd.hash).toHaveBeenCalledTimes(2);
-    expect(repo.update).toHaveBeenCalledTimes(2);
+    await expect(uc.execute({ userId: 1, oldPass: 'old', newPass: 'new' })).resolves.toBe(true);
+    expect(repo.update).toHaveBeenCalledTimes(1);
   });
-
-  // -------------------------------------------------------------------
-  // Supplemental generated tests
-  // -------------------------------------------------------------------
-  it('UT_F07_21 – ChangePasswordUseCase khởi tạo được', () => { expect(uc).toBeInstanceOf(ChangePasswordUseCase); });
-  it('UT_F07_22 – ChangePasswordUseCase có prototype hợp lệ', () => { expect(ChangePasswordUseCase.prototype).toBeDefined(); });
-  it('UT_F07_23 – ValidationError có statusCode 400', () => { const err = new ValidationError('msg'); expect(err.statusCode).toBe(400); });
-  it('UT_F07_24 – ValidationError giữ nguyên name', () => { const err = new ValidationError('msg'); expect(err.name).toBe('ValidationError'); });
-  it('UT_F07_25 – ValidationError giữ nguyên message', () => { const err = new ValidationError('sample'); expect(err.message).toBe('sample'); });
-  it('UT_F07_26 – NotFoundError có statusCode 404', () => { const err = new NotFoundError('msg'); expect(err.statusCode).toBe(404); });
 });
+

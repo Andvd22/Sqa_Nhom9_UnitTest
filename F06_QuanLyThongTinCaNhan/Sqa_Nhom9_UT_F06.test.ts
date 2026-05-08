@@ -1,468 +1,272 @@
-/**
- * @file Sqa_Nhom9_UT_F06.test.ts
- * @module F06_QuanLyThongTinCaNhan
- * @description Unit tests for UpdateUserInfoUseCase - F06: Quản lý thông tin cá nhân
- * @group Nhom 09 - SQA
- *
- * Covers:
- *  - Cập nhật phone, email, username, avatar thành công
- *  - Email/username trùng
- *  - Email sai định dạng
- *  - User không tồn tại
- *  - Không có thay đổi
- *  - SĐT không hợp lệ
- *  - Username < 3 ký tự
- *  - Cập nhật nhiều field
- *  - Email/username giống hiện tại
- *  - SĐT quá dài
- */
-
-// =====================================================================
-// IMPORT FROM SOURCE FILE (enables Jest coverage measurement)
-// =====================================================================
 import {
   UpdateUserInfoUseCase,
   ValidationError,
   NotFoundError,
-  ForbiddenError,
   ConflictError,
   isValidEmail,
   IUserRepository,
 } from './F06.src';
 
-// =====================================================================
-// HELPERS – factory functions for mock repository
-// =====================================================================
-const makeUserRepo = (): jest.Mocked<IUserRepository> => {
-  return {
-    findOne: jest.fn(),
-    create: jest.fn(),
+const makeRepo = (): jest.Mocked<IUserRepository> =>
+  ({
     findByPk: jest.fn(),
-    findAndCountAll: jest.fn(),
+    findOne: jest.fn(),
     update: jest.fn(),
-  } as any;
-};
+  }) as any;
 
-// =====================================================================
-// TEST SUITE
-// =====================================================================
-describe('F06 - Quản lý thông tin cá nhân | UpdateUserInfoUseCase', () => {
+describe('F06 - Quản lý thông tin cá nhân | kiểm thử theo hướng bắt lỗi', () => {
   let repo: jest.Mocked<IUserRepository>;
-  let uc: UpdateUserInfoUseCase;
+  let useCase: UpdateUserInfoUseCase;
 
   beforeEach(() => {
-    repo = makeUserRepo();
-    uc = new UpdateUserInfoUseCase(repo);
+    repo = makeRepo();
+    useCase = new UpdateUserInfoUseCase(repo);
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_01
-  // -------------------------------------------------------------------
-  it('UT_F06_01 – Cập nhật phone thành công', async () => {
-    /**
-     * Test Case ID : UT_F06_01
-     * Test Objective: Xác minh cập nhật SĐT hợp lệ
-     * Input         : userId=1, phone='0901234567'
-     * Expected Output: result.phone='0901234567'
-     * Notes         : CheckDB – update() được gọi với đúng phone
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, phone: '0900000000' });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
+  describe('Luồng thành công', () => {
+    it('UT_F06_01 - Xác minh cập nhật số điện thoại hợp lệ thành công', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, phone: '0900000000' });
+      repo.update.mockResolvedValue([1]);
 
-    const result = await uc.execute({ userId: 1, phone: '0901234567' });
+      const result = await useCase.execute({ userId: 1, phone: '0901234567' });
 
-    expect(result.phone).toBe('0901234567');
-    expect(repo.update).toHaveBeenCalledWith(
-      expect.objectContaining({ phone: '0901234567' }),
-      { where: { id: 1 } }
-    );
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_02
-  // -------------------------------------------------------------------
-  it('UT_F06_02 – Email trùng với user khác', async () => {
-    /**
-     * Test Case ID : UT_F06_02
-     * Test Objective: Xác minh ConflictError khi email đã được sử dụng
-     * Input         : userId=1, email='existing@e.com' (của user 2)
-     * Expected Output: ConflictError "Email đã được sử dụng"
-     * Notes         : CheckDB – update() KHÔNG được gọi
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com' });
-    repo.findOne.mockResolvedValue({ id: 2 });
-
-    await expect(
-      uc.execute({ userId: 1, email: 'existing@e.com' })
-    ).rejects.toThrow(ConflictError);
-
-    expect(repo.update).not.toHaveBeenCalled();
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_03
-  // -------------------------------------------------------------------
-  it('UT_F06_03 – Email sai định dạng', async () => {
-    /**
-     * Test Case ID : UT_F06_03
-     * Test Objective: Xác minh ValidationError khi email không hợp lệ
-     * Input         : email='invalid-email'
-     * Expected Output: ValidationError "Email không hợp lệ"
-     * Notes         : Không query DB để check trùng
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com' });
-
-    await expect(
-      uc.execute({ userId: 1, email: 'invalid-email' })
-    ).rejects.toThrow(ValidationError);
-
-    expect(repo.update).not.toHaveBeenCalled();
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_04
-  // -------------------------------------------------------------------
-  it('UT_F06_04 – User không tồn tại', async () => {
-    /**
-     * Test Case ID : UT_F06_04
-     * Test Objective: Xác minh NotFoundError khi userId không có trong DB
-     * Input         : userId=999
-     * Expected Output: NotFoundError "Người dùng không tồn tại"
-     * Notes         : Không update DB
-     */
-    repo.findByPk.mockResolvedValue(null);
-
-    await expect(
-      uc.execute({ userId: 999, phone: '0901234567' })
-    ).rejects.toThrow(NotFoundError);
-
-    expect(repo.update).not.toHaveBeenCalled();
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_05
-  // -------------------------------------------------------------------
-  it('UT_F06_05 – Không có thay đổi nào', async () => {
-    /**
-     * Test Case ID : UT_F06_05
-     * Test Objective: Xác minh ValidationError khi không truyền field nào
-     * Input         : userId=1 (không có email, phone, username, avatar)
-     * Expected Output: ValidationError "Không có dữ liệu để cập nhật"
-     */
-    repo.findByPk.mockResolvedValue({ id: 1 });
-
-    await expect(uc.execute({ userId: 1 })).rejects.toThrow(ValidationError);
-
-    expect(repo.update).not.toHaveBeenCalled();
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_06
-  // -------------------------------------------------------------------
-  it('UT_F06_06 – Username trùng với user khác', async () => {
-    /**
-     * Test Case ID : UT_F06_06
-     * Test Objective: Xác minh ConflictError khi username đã được sử dụng
-     * Input         : userId=1, username='new' (của user 2)
-     * Expected Output: ConflictError "Username đã được sử dụng"
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
-    repo.findOne.mockResolvedValue({ id: 2 });
-
-    await expect(
-      uc.execute({ userId: 1, username: 'new' })
-    ).rejects.toThrow(ConflictError);
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_07
-  // -------------------------------------------------------------------
-  it('UT_F06_07 – Cập nhật avatar thành công', async () => {
-    /**
-     * Test Case ID : UT_F06_07
-     * Test Objective: Xác minh cập nhật ảnh đại diện
-     * Input         : avatar='pic.jpg'
-     * Expected Output: result.avatar='pic.jpg'
-     */
-    repo.findByPk.mockResolvedValue({ id: 1 });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
-
-    const result = await uc.execute({ userId: 1, avatar: 'pic.jpg' });
-
-    expect(result.avatar).toBe('pic.jpg');
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_08
-  // -------------------------------------------------------------------
-  it('UT_F06_08 – SĐT không hợp lệ (chữ cái)', async () => {
-    /**
-     * Test Case ID : UT_F06_08
-     * Test Objective: Xác minh ValidationError khi SĐT chứa chữ cái
-     * Input         : phone='abc'
-     * Expected Output: ValidationError "SĐT không hợp lệ"
-     */
-    repo.findByPk.mockResolvedValue({ id: 1 });
-
-    await expect(
-      uc.execute({ userId: 1, phone: 'abc' })
-    ).rejects.toThrow(ValidationError);
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_09
-  // -------------------------------------------------------------------
-  it('UT_F06_09 – Username < 3 ký tự', async () => {
-    /**
-     * Test Case ID : UT_F06_09
-     * Test Objective: Xác minh ValidationError khi username < 3 ký tự
-     * Input         : username='ab'
-     * Expected Output: ValidationError "Username >= 3 ký tự"
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
-
-    await expect(
-      uc.execute({ userId: 1, username: 'ab' })
-    ).rejects.toThrow(ValidationError);
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_10
-  // -------------------------------------------------------------------
-  it('UT_F06_10 – Cập nhật nhiều field cùng lúc', async () => {
-    /**
-     * Test Case ID : UT_F06_10
-     * Test Objective: Xác minh cập nhật đồng thời email, username, phone
-     * Input         : email='new@e.com', username='newu', phone='0901111111'
-     * Expected Output: result có cả 3 field mới
-     * Notes         : CheckDB – update() được gọi 1 lần với cả 3 field
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com', username: 'old', phone: '0900000000' });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
-
-    const result = await uc.execute({
-      userId: 1,
-      email: 'new@e.com',
-      username: 'newu',
-      phone: '0901111111',
+      expect(result.phone).toBe('0901234567');
+      expect(repo.update).toHaveBeenCalledWith({ phone: '0901234567' }, { where: { id: 1 } });
     });
 
-    expect(result.email).toBe('new@e.com');
-    expect(result.username).toBe('newu');
-    expect(result.phone).toBe('0901111111');
-    expect(repo.update).toHaveBeenCalledWith(
-      expect.objectContaining({
+    it('UT_F06_02 - Xác minh cập nhật nhiều trường hợp lệ cùng lúc', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com', phone: '0900000000', username: 'Old Name' });
+      repo.findOne.mockResolvedValue(null);
+      repo.update.mockResolvedValue([1]);
+
+      const result = await useCase.execute({
+        userId: 1,
+        username: 'Nguyen Van A',
         email: 'new@e.com',
-        username: 'newu',
-        phone: '0901111111',
-      }),
-      { where: { id: 1 } }
-    );
+        phone: '0912345678',
+        gender: 'male',
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          username: 'Nguyen Van A',
+          email: 'new@e.com',
+          phone: '0912345678',
+          gender: 'male',
+        })
+      );
+    });
+
+    it('UT_F06_03 - Xác minh trường avatar được map sang avatar_url', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1 });
+      repo.update.mockResolvedValue([1]);
+
+      const result = await useCase.execute({ userId: 1, avatar: 'avatar.png' } as any);
+
+      expect(result.avatar_url).toBe('avatar.png');
+      expect(repo.update).toHaveBeenCalledWith({ avatar_url: 'avatar.png' }, { where: { id: 1 } });
+    });
+
+    it('UT_F06_04 - Xác minh email trùng email hiện tại thì không kiểm tra trùng', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, email: 'same@e.com' });
+      repo.update.mockResolvedValue([1]);
+
+      await useCase.execute({ userId: 1, email: 'same@e.com' });
+
+      expect(repo.findOne).not.toHaveBeenCalled();
+      expect(repo.update).toHaveBeenCalledWith({ email: 'same@e.com' }, { where: { id: 1 } });
+    });
+
+    it('UT_F06_05 - Xác minh có reload thì phải gọi reload sau khi cập nhật thành công', async () => {
+      const reload = jest.fn().mockResolvedValue(undefined);
+      repo.findByPk.mockResolvedValue({ id: 1, username: 'Old Name', reload });
+      repo.update.mockResolvedValue([1]);
+
+      await useCase.execute({ userId: 1, username: 'New Name' });
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('UT_F06_06 - Xác minh có getDataValue thì ưu tiên dữ liệu từ model sau reload', async () => {
+      const reload = jest.fn().mockResolvedValue(undefined);
+      const getDataValue = jest.fn((key: string) => {
+        const values: Record<string, any> = {
+          id: 1,
+          username: 'Reloaded Name',
+          email: 'reloaded@e.com',
+          phone: '0999999999',
+          avatar_url: 'reloaded.png',
+          gender: 'female',
+        };
+        return values[key];
+      });
+      repo.findByPk.mockResolvedValue({ id: 1, username: 'Old Name', reload, getDataValue });
+      repo.findOne.mockResolvedValue(null);
+      repo.update.mockResolvedValue([1]);
+
+      const result = await useCase.execute({
+        userId: 1,
+        username: 'New Name',
+        email: 'new@e.com',
+        phone: '0912345678',
+        avatar_url: 'avatar.png',
+        gender: 'male',
+      });
+
+      expect(result).toEqual({
+        id: 1,
+        username: 'Reloaded Name',
+        email: 'reloaded@e.com',
+        phone: '0999999999',
+        avatar_url: 'reloaded.png',
+        gender: 'female',
+      });
+    });
+
+    it('UT_F06_07 - Xác minh có reload nhưng field không có trên object thì trả về fallback', async () => {
+      const reload = jest.fn().mockResolvedValue(undefined);
+      repo.findByPk.mockResolvedValue({ id: 1, reload });
+      repo.update.mockResolvedValue([1]);
+
+      const result = await useCase.execute({ userId: 1, gender: 'male' });
+
+      expect(result.gender).toBe('male');
+    });
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_11
-  // -------------------------------------------------------------------
-  it('UT_F06_11 – Email giống hiện tại (không check trùng)', async () => {
-    /**
-     * Test Case ID : UT_F06_11
-     * Test Objective: Xác minh không check trùng khi email không đổi
-     * Input         : email='same@e.com' (giống current)
-     * Expected Output: Cập nhật thành công, findOne KHÔNG được gọi cho email
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, email: 'same@e.com' });
-    repo.update.mockResolvedValue([1]);
+  describe('Validation và điều kiện biên', () => {
+    it('UT_F06_08 - Xác minh ValidationError khi không có dữ liệu cập nhật', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1 });
 
-    const result = await uc.execute({ userId: 1, email: 'same@e.com' });
+      await expect(useCase.execute({ userId: 1 })).rejects.toThrow(ValidationError);
+      await expect(useCase.execute({ userId: 1, username: '' })).rejects.toThrow(ValidationError);
+      expect(repo.update).not.toHaveBeenCalled();
+    });
 
-    expect(result.email).toBe('same@e.com');
-    // findOne không được gọi vì email giống hiện tại
+    it('UT_F06_09 - Xác minh ValidationError khi số điện thoại rỗng', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1 });
+
+      await expect(useCase.execute({ userId: 1, phone: '' })).rejects.toThrow('So dien thoai khong hop le');
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('UT_F06_10 - Xác minh avatar_url rỗng thì không được cập nhật', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1 });
+
+      await expect(useCase.execute({ userId: 1, avatar_url: '' })).rejects.toThrow(ValidationError);
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('UT_F06_11 - Xác minh ValidationError khi email sai định dạng', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com' });
+
+      await expect(useCase.execute({ userId: 1, email: 'invalid-email' })).rejects.toThrow('Email khong hop le');
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('UT_F06_12 - Xác minh ValidationError khi tên chỉ chứa khoảng trắng', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
+
+      await expect(useCase.execute({ userId: 1, username: '   ' })).rejects.toThrow('Ten nguoi dung khong hop le');
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('UT_F06_13 - Xác minh ValidationError khi tên chỉ có một ký tự số', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
+
+      await expect(useCase.execute({ userId: 1, username: '8' })).rejects.toThrow('Ten nguoi dung khong hop le');
+    });
+
+    it('UT_F06_14 - Xác minh ValidationError khi tên chứa script', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
+
+      await expect(useCase.execute({ userId: 1, username: '<script>alert(1)</script>' })).rejects.toThrow(
+        'Ten nguoi dung khong hop le'
+      );
+    });
+
+    it('UT_F06_15 - Xác minh ValidationError khi số điện thoại không đúng 10 chữ số', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, phone: '0900000000' });
+
+      await expect(useCase.execute({ userId: 1, phone: '090abc4567' })).rejects.toThrow('So dien thoai khong hop le');
+      await expect(useCase.execute({ userId: 1, phone: '1277128945' })).rejects.toThrow('So dien thoai khong hop le');
+    });
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_12
-  // -------------------------------------------------------------------
-  it('UT_F06_12 – Username giống hiện tại (không check trùng)', async () => {
-    /**
-     * Test Case ID : UT_F06_12
-     * Test Objective: Xác minh không check trùng khi username không đổi
-     * Input         : username='same' (giống current)
-     * Expected Output: Cập nhật thành công
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, username: 'same' });
-    repo.update.mockResolvedValue([1]);
+  describe('Bắt lỗi nghiệp vụ', () => {
+    it('UT_F06_16 - Xác minh NotFoundError khi người dùng không tồn tại', async () => {
+      repo.findByPk.mockResolvedValue(null);
 
-    const result = await uc.execute({ userId: 1, username: 'same' });
+      await expect(useCase.execute({ userId: 999, phone: '0901234567' })).rejects.toThrow(NotFoundError);
+      expect(repo.update).not.toHaveBeenCalled();
+    });
 
-    expect(result.username).toBe('same');
+    it('UT_F06_17 - Xác minh email đã tồn tại ở người dùng khác thì chặn cập nhật', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com' });
+      repo.findOne.mockResolvedValue({ id: 2 });
+
+      await expect(useCase.execute({ userId: 1, email: 'existing@e.com' })).rejects.toThrow(ConflictError);
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('UT_F06_18 - Xác minh chỉ cập nhật username thì không gọi kiểm tra trùng email và phone', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
+      repo.update.mockResolvedValue([1]);
+
+      await useCase.execute({ userId: 1, username: 'New Name' });
+
+      expect(repo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('UT_F06_19 - Xác minh số điện thoại đã tồn tại ở người dùng khác thì bị chặn', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, phone: '0900000000' });
+      repo.findOne.mockResolvedValue({ id: 2, phone: '0901234567' });
+
+      await expect(useCase.execute({ userId: 1, phone: '0901234567' })).rejects.toThrow(
+        'So dien thoai da duoc su dung'
+      );
+      expect(repo.update).not.toHaveBeenCalled();
+    });
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_13
-  // -------------------------------------------------------------------
-  it('UT_F06_13 – SĐT quá dài (12 số)', async () => {
-    /**
-     * Test Case ID : UT_F06_13
-     * Test Objective: Xác minh ValidationError khi SĐT > 11 số
-     * Input         : phone='090123456789' (12 số)
-     * Expected Output: ValidationError "SĐT không hợp lệ"
-     */
-    repo.findByPk.mockResolvedValue({ id: 1 });
+  describe('Bắt lỗi dependency và side effect', () => {
+    it('UT_F06_20 - Xác minh ValidationError khi update trả về 0 dòng', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1, username: 'Old' });
+      repo.update.mockResolvedValue([0]);
 
-    await expect(
-      uc.execute({ userId: 1, phone: '090123456789' })
-    ).rejects.toThrow(ValidationError);
+      await expect(useCase.execute({ userId: 1, username: 'New Name' })).rejects.toThrow(ValidationError);
+    });
+
+    it('UT_F06_21 - Xác minh repository update ném lỗi thì đẩy lỗi ra ngoài', async () => {
+      repo.findByPk.mockResolvedValue({ id: 1 });
+      repo.findOne.mockResolvedValue(null);
+      repo.update.mockRejectedValue(new Error('db error'));
+
+      await expect(useCase.execute({ userId: 1, phone: '0912345678' })).rejects.toThrow('db error');
+    });
+
+    it('UT_F06_22 - Xác minh query kiểm tra email trùng phải loại trừ chính user hiện tại', async () => {
+      repo.findByPk.mockResolvedValue({ id: 9, email: 'old@e.com' });
+      repo.findOne.mockResolvedValue(null);
+      repo.update.mockResolvedValue([1]);
+
+      await useCase.execute({ userId: 9, email: 'new@e.com' });
+
+      expect(repo.findOne).toHaveBeenCalledWith({ where: { email: 'new@e.com', id: { ne: 9 } } });
+    });
   });
 
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_14
-  // -------------------------------------------------------------------
-  it('UT_F06_14 – Cập nhật thành email hợp lệ mới', async () => {
-    /**
-     * Test Case ID : UT_F06_14
-     * Test Objective: Xác minh cập nhật email hợp lệ
-     * Input         : email='valid@new.com'
-     * Expected Output: result.email='valid@new.com'
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com' });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
+  describe('Kiểm tra helper', () => {
+    it('UT_F06_23 - Xác minh isValidEmail dùng đúng regex hiện tại của source', () => {
+      expect(isValidEmail('valid@example.com')).toBe(true);
+      expect(isValidEmail('invalid-email')).toBe(false);
+      expect(isValidEmail('nguyenvan@example.com')).toBe(true);
+    });
 
-    const result = await uc.execute({ userId: 1, email: 'valid@new.com' });
-
-    expect(result.email).toBe('valid@new.com');
+    it('UT_F06_24 - Xác minh các lớp lỗi giữ đúng status code', () => {
+      expect(new ValidationError('msg').statusCode).toBe(400);
+      expect(new NotFoundError('msg').statusCode).toBe(404);
+      expect(new ConflictError('msg').statusCode).toBe(409);
+    });
   });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_15
-  // -------------------------------------------------------------------
-  it('UT_F06_15 – Cập nhật username = 3 ký tự (biên dưới)', async () => {
-    /**
-     * Test Case ID : UT_F06_15
-     * Test Objective: Xác minh username đúng 3 ký tự được chấp nhận
-     * Input         : username='abc'
-     * Expected Output: Cập nhật thành công
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, username: 'old' });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
-
-    const result = await uc.execute({ userId: 1, username: 'abc' });
-
-    expect(result.username).toBe('abc');
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_16
-  // -------------------------------------------------------------------
-  it('UT_F06_16 – update() được gọi đúng 1 lần', async () => {
-    /**
-     * Test Case ID : UT_F06_16
-     * Test Objective: Xác minh không có vòng lặp/retry update
-     * Input         : userId=1, phone='0901234567'
-     * Expected Output: update() đúng 1 lần
-     * Notes         : Rollback – gọi nhiều lần sẽ gây lỗi dữ liệu
-     */
-    repo.findByPk.mockResolvedValue({ id: 1 });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
-
-    await uc.execute({ userId: 1, phone: '0901234567' });
-
-    expect(repo.update).toHaveBeenCalledTimes(1);
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_17
-  // -------------------------------------------------------------------
-  it('UT_F06_17 – findByPk() được gọi đúng 1 lần với userId', async () => {
-    /**
-     * Test Case ID : UT_F06_17
-     * Test Objective: Xác minh tra cứu user trước khi cập nhật
-     * Input         : userId=1
-     * Expected Output: findByPk(1) được gọi đúng 1 lần
-     */
-    repo.findByPk.mockResolvedValue({ id: 1 });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
-
-    await uc.execute({ userId: 1, phone: '0901234567' });
-
-    expect(repo.findByPk).toHaveBeenCalledTimes(1);
-    expect(repo.findByPk).toHaveBeenCalledWith(1);
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_18
-  // -------------------------------------------------------------------
-  it('UT_F06_18 – SĐT = 10 số (biên dưới)', async () => {
-    /**
-     * Test Case ID : UT_F06_18
-     * Test Objective: Xác minh SĐT đúng 10 số được chấp nhận
-     * Input         : phone='0901234567'
-     * Expected Output: Cập nhật thành công
-     */
-    repo.findByPk.mockResolvedValue({ id: 1 });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
-
-    const result = await uc.execute({ userId: 1, phone: '0901234567' });
-
-    expect(result.phone).toBe('0901234567');
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_19
-  // -------------------------------------------------------------------
-  it('UT_F06_19 – SĐT = 11 số (biên trên)', async () => {
-    /**
-     * Test Case ID : UT_F06_19
-     * Test Objective: Xác minh SĐT đúng 11 số được chấp nhận
-     * Input         : phone='09012345678'
-     * Expected Output: Cập nhật thành công
-     */
-    repo.findByPk.mockResolvedValue({ id: 1 });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
-
-    const result = await uc.execute({ userId: 1, phone: '09012345678' });
-
-    expect(result.phone).toBe('09012345678');
-  });
-
-  // -------------------------------------------------------------------
-  // Test Case UT_F06_20
-  // -------------------------------------------------------------------
-  it('UT_F06_20 – Email có subdomain phức tạp được chấp nhận', async () => {
-    /**
-     * Test Case ID : UT_F06_20
-     * Test Objective: Xác minh email có nhiều subdomain vẫn hợp lệ
-     * Input         : email='student@uni.edu.vn'
-     * Expected Output: Cập nhật thành công
-     * Notes         : isValidEmail('student@uni.edu.vn') === true
-     */
-    repo.findByPk.mockResolvedValue({ id: 1, email: 'old@e.com' });
-    repo.findOne.mockResolvedValue(null);
-    repo.update.mockResolvedValue([1]);
-
-    const result = await uc.execute({ userId: 1, email: 'student@uni.edu.vn' });
-
-    expect(result.email).toBe('student@uni.edu.vn');
-    expect(isValidEmail('student@uni.edu.vn')).toBe(true);
-  });
-
-  // -------------------------------------------------------------------
-  // Supplemental generated tests
-  // -------------------------------------------------------------------
-  it('UT_F06_21 – UpdateUserInfoUseCase khởi tạo được', () => { expect(uc).toBeInstanceOf(UpdateUserInfoUseCase); });
-  it('UT_F06_22 – UpdateUserInfoUseCase có prototype hợp lệ', () => { expect(UpdateUserInfoUseCase.prototype).toBeDefined(); });
-  it('UT_F06_23 – isValidEmail trả về true với email hợp lệ', () => { expect(isValidEmail('valid@example.com')).toBe(true); });
-  it('UT_F06_24 – isValidEmail trả về false với email không hợp lệ', () => { expect(isValidEmail('invalid-email')).toBe(false); });
-  it('UT_F06_25 – ValidationError có statusCode 400', () => { const err = new ValidationError('msg'); expect(err.statusCode).toBe(400); });
-  it('UT_F06_26 – ValidationError giữ nguyên name', () => { const err = new ValidationError('msg'); expect(err.name).toBe('ValidationError'); });
-  it('UT_F06_27 – ValidationError giữ nguyên message', () => { const err = new ValidationError('sample'); expect(err.message).toBe('sample'); });
-  it('UT_F06_28 – NotFoundError có statusCode 404', () => { const err = new NotFoundError('msg'); expect(err.statusCode).toBe(404); });
 });
